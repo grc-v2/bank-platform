@@ -492,9 +492,19 @@ SET search_path = public;
 --     Lãi suất, biểu phí, hạn mức, điều kiện mở: tất cả là DỮ LIỆU, không phải
 --     hằng số trong code. Đổi biểu phí không được phép là một lần deploy.
 --
---     Mọi bảng đều có effective_from/effective_to: đổi thì THÊM DÒNG, không sửa
---     dòng cũ — nếu không, sao kê tháng trước tính lại sẽ ra số khác.
+--     Mọi bảng GIÁ TRỊ (rates, fees, limits, gl_mappings) đều có effective_from/
+--     effective_to: đổi thì THÊM DÒNG, không sửa dòng cũ — nếu không, sao kê tháng
+--     trước tính lại sẽ ra số khác. Riêng product_eligibility_rules CỐ Ý không có:
+--     điều kiện mở tài khoản chỉ được đánh giá tại thời điểm mở, không cần tra ngược.
+--
+--     Ràng buộc "không hai dòng cùng hiệu lực" KHÔNG phải UNIQUE trên effective_from
+--     — cái đó chỉ chặn trùng đúng ngày bắt đầu. Phải là EXCLUDE trên khoảng ngày.
 -- ---------------------------------------------------------------------
+
+-- btree_gist cho phép trộn toán tử '=' (trên BIGINT, VARCHAR) với '&&' (trên
+-- daterange) trong cùng một EXCLUDE. Chạy dưới quyền superuser, TRƯỚC SET ROLE.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 SET ROLE product_svc;
 SET search_path = product;
 
@@ -535,6 +545,8 @@ COMMENT ON COLUMN product_interest_rates.annual_rate IS
     'Tỉ lệ thập phân: 0.045000 = 4.5%/năm. CHECK < 1 chặn lỗi nhập 4.5 thay vì 0.045';
 COMMENT ON COLUMN product_interest_rates.tier_to IS
     'NULL = bậc cao nhất, không giới hạn trên';
+COMMENT ON COLUMN product_interest_rates.term_months IS
+    'NULL với sản phẩm không kỳ hạn. BẤT BIẾN DO ỨNG DỤNG GIỮ: TERM_DEPOSIT phải có term_months, CURRENT/SAVINGS phải không — CHECK không với sang bảng products được nên DB không chặn nổi';
 
 CREATE TABLE product_fees (
     id             BIGSERIAL     PRIMARY KEY,
@@ -549,16 +561,27 @@ CREATE TABLE product_fees (
     currency       CHAR(3)       NOT NULL DEFAULT 'VND',
     effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
     effective_to   DATE,
-    CONSTRAINT ck_fee_type  CHECK (fee_type IN ('FLAT', 'PERCENT', 'TIERED')),
+    -- TIERED CỐ Ý KHÔNG có trong danh sách: phí bậc thang cần một bảng
+    -- product_fee_tiers để chứa các bậc, mà bảng đó chưa tồn tại. Thêm một enum
+    -- value không dùng được chỉ tạo ra một lỗ trong ck_fee_shape. Khi nào thực sự
+    -- cần phí bậc thang thì thêm bảng tier TRƯỚC, rồi mới mở enum.
+    CONSTRAINT ck_fee_type  CHECK (fee_type IN ('FLAT', 'PERCENT')),
     CONSTRAINT ck_fee_event CHECK (charge_event IN (
         'ACCOUNT_OPEN', 'ACCOUNT_CLOSE', 'MONTHLY_MAINTENANCE',
         'INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'ATM_WITHDRAWAL', 'STATEMENT_REQUEST')),
     CONSTRAINT ck_fee_shape CHECK (
            (fee_type = 'FLAT'    AND amount  IS NOT NULL AND percent IS NULL)
-        OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)
-        OR (fee_type = 'TIERED')),
+        OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)),
     CONSTRAINT ck_fee_bounds CHECK (min_amount IS NULL OR max_amount IS NULL OR max_amount >= min_amount),
-    CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from)
+    CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from),
+    -- Hai biểu phí cùng fee_code không được PHỦ NHAU về thời gian. UNIQUE trên
+    -- effective_from chỉ chặn trùng đúng ngày bắt đầu, không chặn được
+    -- (01/01 -> 31/12) chồng lên (01/06 -> mở) — và khi đó không ai trả lời được
+    -- tháng 6 thu phí theo dòng nào.
+    CONSTRAINT ex_fee_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        fee_code   WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON CONSTRAINT ck_fee_shape ON product_fees IS
     'FLAT dùng amount, PERCENT dùng percent — không cho điền cả hai rồi cãi nhau cái nào thắng';
@@ -577,7 +600,14 @@ CREATE TABLE product_limits (
     CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
     CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
     CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
-    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from)
+    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from),
+    -- Cùng lý do như ex_fee_overlap: hai hạn mức cùng mã không được phủ nhau.
+    -- channel nằm trong khoá vì cùng một limit_code có thể khác nhau theo kênh.
+    CONSTRAINT ex_limit_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        limit_code WITH =,
+        channel    WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON TABLE product_limits IS
     'Khuôn hạn mức theo sản phẩm. Mức đã dùng thực tế nằm ở core_banking.transfer_limit_usage';
@@ -597,13 +627,24 @@ CREATE TABLE product_eligibility_rules (
 -- toán vào GL nào, lãi phải trả vào GL nào, phí thu vào GL nào.
 -- Không có bảng này thì mã GL bị hardcode trong code — lỗi kinh điển của
 -- core banking tự viết, và là thứ khiến việc thêm sản phẩm mới phải sửa code.
+-- CÓ effective_from/effective_to, và đó là điểm quan trọng nhất của bảng này.
+-- Nếu chỉ UNIQUE (product_id, purpose) thì đổi mã GL buộc phải UPDATE dòng cũ —
+-- và ngay lúc đó mất khả năng trả lời "giao dịch tháng trước hạch toán vào tài
+-- khoản nào". Với sổ cái, mất lịch sử ánh xạ là mất khả năng đối chiếu kỳ cũ.
 CREATE TABLE product_gl_mappings (
-    id         BIGSERIAL   PRIMARY KEY,
-    product_id BIGINT      NOT NULL REFERENCES products (id) ON DELETE CASCADE,
-    purpose    VARCHAR(30) NOT NULL,
-    gl_code    VARCHAR(20) NOT NULL,
+    id             BIGSERIAL   PRIMARY KEY,
+    product_id     BIGINT      NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    purpose        VARCHAR(30) NOT NULL,
+    gl_code        VARCHAR(20) NOT NULL,
+    effective_from DATE        NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
     CONSTRAINT ck_glmap_purpose CHECK (purpose IN ('PRINCIPAL', 'INTEREST_PAYABLE', 'INTEREST_EXPENSE', 'FEE_INCOME')),
-    CONSTRAINT uq_glmap UNIQUE (product_id, purpose)
+    CONSTRAINT ck_glmap_period  CHECK (effective_to IS NULL OR effective_to > effective_from),
+    CONSTRAINT uq_glmap UNIQUE (product_id, purpose, effective_from),
+    CONSTRAINT ex_glmap_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        purpose    WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON COLUMN product_gl_mappings.gl_code IS
     'Tham chiếu MỀM sang core_banking.gl_accounts.gl_code — không FK xuyên schema';
