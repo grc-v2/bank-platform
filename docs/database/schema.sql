@@ -1005,3 +1005,182 @@ CREATE TABLE account_balance_snapshots (
 );
 
 -- <<< HẾT KHỐI [5b]
+
+-- ---------------------------------------------------------------------
+-- [5c] Giao dịch, lãi, phí, hạ tầng
+-- ---------------------------------------------------------------------
+
+CREATE TABLE transfers (
+    id                         BIGSERIAL     PRIMARY KEY,
+    transfer_reference         VARCHAR(40)   NOT NULL,
+    idempotency_key            VARCHAR(64)   NOT NULL,
+    transfer_type              VARCHAR(20)   NOT NULL,
+    source_account_id          BIGINT        NOT NULL REFERENCES accounts (id),
+    destination_account_id     BIGINT        REFERENCES accounts (id),
+    destination_account_number VARCHAR(34),
+    destination_bank_code      VARCHAR(20),
+    amount                     NUMERIC(19,4) NOT NULL,
+    currency                   CHAR(3)       NOT NULL DEFAULT 'VND',
+    fee_amount                 NUMERIC(19,4) NOT NULL DEFAULT 0,
+    channel                    VARCHAR(20)   NOT NULL,
+    description                VARCHAR(500),
+    status                     VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    journal_entry_id           BIGINT        REFERENCES journal_entries (id),
+    initiated_by_user_id       BIGINT,
+    version                    INT           NOT NULL DEFAULT 0,
+    created_at                 TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    completed_at               TIMESTAMPTZ,
+    updated_at                 TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    -- Constraint ĐẶT TÊN TƯỜNG MINH. Bản cũ để CHECK inline, Postgres tự đặt
+    -- tên 'transfers_status_check', và đến migration sau mới phát hiện mình
+    -- không biết nó tên gì. Bài học đó nằm ở đây.
+    CONSTRAINT uq_transfers_reference   UNIQUE (transfer_reference),
+    -- UNIQUE trên idempotency_key LÀ toàn bộ cơ chế chống trùng lệnh. Đặt tên
+    -- tường minh vì đây là ràng buộc mà code sẽ bắt lỗi theo tên khi client retry.
+    CONSTRAINT uq_transfers_idempotency UNIQUE (idempotency_key),
+    CONSTRAINT ck_transfers_status  CHECK (status IN ('PENDING', 'PENDING_EXTERNAL', 'COMPLETED', 'FAILED', 'REVERSED')),
+    CONSTRAINT ck_transfers_type    CHECK (transfer_type IN ('INTERNAL', 'EXTERNAL')),
+    CONSTRAINT ck_transfers_channel CHECK (channel IN ('INTERNET', 'MOBILE', 'ATM', 'BRANCH', 'API')),
+    CONSTRAINT ck_transfers_amount  CHECK (amount > 0 AND fee_amount >= 0),
+    -- Chuyển nội bộ phải có tài khoản đích trong hệ thống; chuyển liên ngân hàng
+    -- phải có số tài khoản + mã ngân hàng đối tác. Không cho lẫn lộn.
+    CONSTRAINT ck_transfers_target  CHECK (
+           (transfer_type = 'INTERNAL' AND destination_account_id IS NOT NULL)
+        OR (transfer_type = 'EXTERNAL' AND destination_account_number IS NOT NULL
+                                       AND destination_bank_code IS NOT NULL)),
+    CONSTRAINT ck_transfers_self    CHECK (destination_account_id IS NULL OR destination_account_id <> source_account_id)
+);
+COMMENT ON COLUMN transfers.idempotency_key IS
+    'Client gửi lại cùng key = cùng một lệnh, không tạo giao dịch thứ hai. UNIQUE là toàn bộ cơ chế, không cần code kiểm tra trước';
+COMMENT ON COLUMN transfers.journal_entry_id IS
+    'NULL khi chưa hạch toán (PENDING). Bút toán là sự thật; transfers chỉ là ý định';
+
+-- Saga chuyển tiền liên ngân hàng.
+-- PENDING_EXTERNAL = đã treo tiền nguồn, đang chờ đối tác xác nhận.
+-- Thất bại hoặc quá hạn -> bút toán ĐẢO, không bao giờ xóa bút toán gốc.
+CREATE TABLE external_transfers (
+    id                      BIGSERIAL   PRIMARY KEY,
+    transfer_id             BIGINT      NOT NULL REFERENCES transfers (id),
+    partner_code            VARCHAR(20) NOT NULL,
+    partner_ref             VARCHAR(100),
+    saga_state              VARCHAR(30) NOT NULL DEFAULT 'HOLD_PLACED',
+    partner_idempotency_key VARCHAR(64) NOT NULL,
+    deadline_at             TIMESTAMPTZ NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Một transfer chỉ có tối đa một saga liên ngân hàng.
+    CONSTRAINT uq_ext_transfer     UNIQUE (transfer_id),
+    CONSTRAINT uq_ext_idempotency  UNIQUE (partner_idempotency_key),
+    CONSTRAINT ck_ext_saga_state CHECK (saga_state IN (
+        'HOLD_PLACED',        -- đã treo tiền nguồn, chưa gọi đối tác
+        'PARTNER_REQUESTED',  -- đã gọi, đang chờ trả lời
+        'PARTNER_CONFIRMED',  -- xong -> transfer COMPLETED
+        'PARTNER_REJECTED',   -- bị từ chối -> đảo bút toán
+        'TIMED_OUT',          -- quá hạn -> đảo bút toán
+        'COMPENSATED'))       -- bút toán đảo đã ghi
+);
+COMMENT ON COLUMN external_transfers.partner_idempotency_key IS
+    'Idempotency với ĐỐI TÁC (khác idempotency_key với client): retry gọi partner dùng lại đúng key này';
+
+-- Velocity check: đã dùng bao nhiêu hạn mức trong cửa sổ nào.
+-- Khuôn hạn mức nằm ở product.product_limits; bảng này là mức đã tiêu.
+CREATE TABLE transfer_limit_usage (
+    id           BIGSERIAL     PRIMARY KEY,
+    account_id   BIGINT        NOT NULL REFERENCES accounts (id),
+    limit_code   VARCHAR(30)   NOT NULL,
+    window_start DATE          NOT NULL,
+    used_amount  NUMERIC(19,4) NOT NULL DEFAULT 0,
+    used_count   INT           NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_limit_usage UNIQUE (account_id, limit_code, window_start),
+    CONSTRAINT ck_limit_usage CHECK (used_amount >= 0 AND used_count >= 0)
+);
+COMMENT ON COLUMN transfer_limit_usage.window_start IS
+    'Ngày đầu cửa sổ: hạn mức ngày thì là chính ngày đó, hạn mức tháng thì là ngày 01';
+
+-- Dự thu lãi HẰNG NGÀY, hạch toán định kỳ. UNIQUE(account_id, accrual_date)
+-- là toàn bộ cơ chế chống chạy EOD hai lần — không cần cờ "đã chạy chưa".
+CREATE TABLE interest_accruals (
+    id               BIGSERIAL     PRIMARY KEY,
+    account_id       BIGINT        NOT NULL REFERENCES accounts (id),
+    accrual_date     DATE          NOT NULL,
+    principal_base   NUMERIC(19,4) NOT NULL,
+    annual_rate      NUMERIC(9,6)  NOT NULL,
+    accrued_amount   NUMERIC(19,4) NOT NULL,
+    posted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    journal_entry_id BIGINT        REFERENCES journal_entries (id),
+    created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_accrual        UNIQUE (account_id, accrual_date),
+    CONSTRAINT ck_accrual_posted CHECK (NOT posted OR journal_entry_id IS NOT NULL),
+    CONSTRAINT ck_accrual_rate   CHECK (annual_rate >= 0 AND annual_rate < 1)
+);
+COMMENT ON COLUMN interest_accruals.posted IS
+    'FALSE = đã tính, chưa hạch toán. Lãi dồn từng ngày nhưng chỉ nhập sổ khi trả — đó là lý do tách bảng này khỏi journal_lines';
+
+CREATE TABLE fee_charges (
+    id               BIGSERIAL     PRIMARY KEY,
+    account_id       BIGINT        NOT NULL REFERENCES accounts (id),
+    fee_code         VARCHAR(30)   NOT NULL,
+    source_type      VARCHAR(30),
+    source_id        VARCHAR(100),
+    amount           NUMERIC(19,4) NOT NULL,
+    currency         CHAR(3)       NOT NULL DEFAULT 'VND',
+    status           VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    journal_entry_id BIGINT        REFERENCES journal_entries (id),
+    charged_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT ck_fee_charge_status CHECK (status IN ('PENDING', 'POSTED', 'WAIVED')),
+    CONSTRAINT ck_fee_charge_amount CHECK (amount >= 0),
+    CONSTRAINT ck_fee_charge_posted CHECK (status <> 'POSTED' OR journal_entry_id IS NOT NULL)
+);
+COMMENT ON COLUMN fee_charges.status IS
+    'WAIVED = miễn phí nhưng VẪN LƯU VẾT đã từng phát sinh. Xóa dòng đi là mất khả năng trả lời "sao tháng này không thu phí khách này"';
+
+CREATE TABLE outbox (
+    id             BIGSERIAL    PRIMARY KEY,
+    aggregate_type VARCHAR(50)  NOT NULL,
+    aggregate_id   VARCHAR(100) NOT NULL,
+    event_type     VARCHAR(100) NOT NULL,
+    payload        JSONB        NOT NULL,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    published_at   TIMESTAMPTZ
+);
+COMMENT ON TABLE outbox IS
+    'Phát transfer.completed.v1, transfer.reversed.v1... Độc lập với outbox của customer và product';
+
+-- core_banking cũng là CONSUMER: nghe customer.status.changed.v1 để phong tỏa
+-- tài khoản khi khách hàng bị đình chỉ.
+CREATE TABLE processed_events (
+    event_id     VARCHAR(64) PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Append-only cho mọi thao tác ghi của core.
+CREATE TABLE audit_log (
+    id            BIGSERIAL    PRIMARY KEY,
+    actor_user_id BIGINT,
+    action        VARCHAR(50)  NOT NULL,
+    resource_type VARCHAR(50)  NOT NULL,
+    resource_id   VARCHAR(100) NOT NULL,
+    detail        JSONB,
+    at            TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+COMMENT ON COLUMN audit_log.actor_user_id IS
+    'NULL = hệ thống hoặc batch job, không phải người';
+
+CREATE INDEX idx_transfers_source   ON transfers (source_account_id, created_at DESC);
+CREATE INDEX idx_transfers_dest     ON transfers (destination_account_id, created_at DESC);
+CREATE INDEX idx_transfers_pending  ON transfers (created_at) WHERE status IN ('PENDING', 'PENDING_EXTERNAL');
+-- Job quét saga treo: chỉ index những dòng chưa kết thúc.
+CREATE INDEX idx_ext_active         ON external_transfers (deadline_at)
+    WHERE saga_state IN ('HOLD_PLACED', 'PARTNER_REQUESTED');
+CREATE INDEX idx_accrual_unposted   ON interest_accruals (accrual_date) WHERE NOT posted;
+CREATE INDEX idx_fee_account        ON fee_charges (account_id, charged_at DESC);
+CREATE INDEX idx_fee_pending        ON fee_charges (charged_at) WHERE status = 'PENDING';
+CREATE INDEX idx_core_outbox_unpub  ON outbox (created_at) WHERE published_at IS NULL;
+CREATE INDEX idx_audit_resource     ON audit_log (resource_type, resource_id, at DESC);
+CREATE INDEX idx_audit_actor        ON audit_log (actor_user_id, at DESC);
+
+RESET ROLE;
+SET search_path = public;
+
+-- <<< HẾT KHỐI [5c] — kết thúc schema core_banking
