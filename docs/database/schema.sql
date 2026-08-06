@@ -810,3 +810,149 @@ CREATE INDEX idx_holds_active ON account_holds (account_id) WHERE status = 'ACTI
 CREATE INDEX idx_holds_expiry ON account_holds (expires_at) WHERE status = 'ACTIVE';
 
 -- <<< HẾT KHỐI [5a]
+
+-- ---------------------------------------------------------------------
+-- [5b] SỔ CÁI BÚT TOÁN KÉP (quyết định DB1)
+--
+--      Một giao dịch = MỘT journal_entries (header) + NHIỀU journal_lines.
+--      Chuyển 100.000 và thu phí 2.000 là một bút toán BA dòng:
+--        Nợ  tài khoản người gửi   102.000
+--        Có  tài khoản người nhận  100.000
+--        Có  GL thu nhập phí         2.000
+--      Bảng ledger_entries phẳng của bản cũ không diễn tả nổi việc này.
+-- ---------------------------------------------------------------------
+
+CREATE TABLE journal_entries (
+    id                   BIGSERIAL    PRIMARY KEY,
+    entry_reference      VARCHAR(40)  NOT NULL,
+    transaction_type     VARCHAR(20)  NOT NULL,
+    source_type          VARCHAR(30),
+    source_id            VARCHAR(100),
+    value_date           DATE         NOT NULL,
+    booking_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
+    posted_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    description          VARCHAR(500),
+    reversal_of_entry_id BIGINT       REFERENCES journal_entries (id),
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_journal_reference UNIQUE (entry_reference),
+    CONSTRAINT ck_journal_txn_type CHECK (transaction_type IN (
+        'TRANSFER', 'FEE', 'INTEREST', 'REVERSAL', 'ADJUSTMENT', 'OPENING')),
+    -- REVERSAL bắt buộc trỏ về bản gốc; loại khác bắt buộc không trỏ.
+    CONSTRAINT ck_journal_reversal CHECK (
+           (transaction_type =  'REVERSAL' AND reversal_of_entry_id IS NOT NULL)
+        OR (transaction_type <> 'REVERSAL' AND reversal_of_entry_id IS NULL))
+);
+COMMENT ON COLUMN journal_entries.value_date IS
+    'NGÀY HIỆU LỰC — quyết định tính lãi. Khác booking_date: giao dịch cuối ngày 31 có thể value_date 31 nhưng booking_date 01 tháng sau';
+COMMENT ON COLUMN journal_entries.booking_date IS
+    'NGÀY HẠCH TOÁN — quyết định bút toán rơi vào kỳ sổ nào';
+COMMENT ON COLUMN journal_entries.reversal_of_entry_id IS
+    'Sổ cái APPEND-ONLY: sai thì ghi bút toán đảo trỏ về bản gốc, không bao giờ UPDATE hay DELETE bút toán cũ';
+
+CREATE TABLE journal_lines (
+    id               BIGSERIAL,
+    journal_entry_id BIGINT        NOT NULL REFERENCES journal_entries (id),
+    line_no          INT           NOT NULL,
+    account_id       BIGINT        REFERENCES accounts (id),
+    gl_code          VARCHAR(20)   NOT NULL REFERENCES gl_accounts (gl_code),
+    direction        VARCHAR(6)    NOT NULL,
+    amount           NUMERIC(19,4) NOT NULL,
+    currency         CHAR(3)       NOT NULL DEFAULT 'VND',
+    balance_after    NUMERIC(19,4),
+    created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (id, created_at),
+    CONSTRAINT uq_journal_line   UNIQUE (journal_entry_id, line_no, created_at),
+    CONSTRAINT ck_line_direction CHECK (direction IN ('DEBIT', 'CREDIT')),
+    CONSTRAINT ck_line_amount    CHECK (amount > 0),
+    CONSTRAINT ck_line_no        CHECK (line_no > 0)
+) PARTITION BY RANGE (created_at);
+
+COMMENT ON COLUMN journal_lines.account_id IS
+    'NULL = dòng này chỉ chạm GL nội bộ (tiền mặt, clearing, thu nhập phí). Quyết định DB3: không có tài khoản SYSTEM trong bảng accounts';
+COMMENT ON COLUMN journal_lines.amount IS
+    'LUÔN DƯƠNG. Nợ hay Có do cột direction quyết định, không dùng dấu âm — số âm trong sổ cái là nguồn gốc của những đêm mất ngủ';
+COMMENT ON CONSTRAINT uq_journal_line ON journal_lines IS
+    'Postgres bắt UNIQUE/PK trên bảng partition PHẢI chứa cột partition, nên có created_at ở đây. Vẫn đủ mạnh: now() trả thời điểm BẮT ĐẦU transaction và không đổi trong transaction, nên mọi dòng của một bút toán có created_at giống hệt nhau';
+
+-- Partition theo tháng. Sinh sẵn ba tháng để hiểu cơ chế; sinh tự động về sau
+-- là việc của job hoặc pg_partman. DEFAULT hứng dữ liệu ngoài khoảng để INSERT
+-- không chết khi ai đó quên tạo partition tháng mới.
+CREATE TABLE journal_lines_2026_08 PARTITION OF journal_lines
+    FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+CREATE TABLE journal_lines_2026_09 PARTITION OF journal_lines
+    FOR VALUES FROM ('2026-09-01') TO ('2026-10-01');
+CREATE TABLE journal_lines_2026_10 PARTITION OF journal_lines
+    FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+CREATE TABLE journal_lines_default PARTITION OF journal_lines DEFAULT;
+
+CREATE INDEX idx_lines_entry   ON journal_lines (journal_entry_id);
+CREATE INDEX idx_lines_account ON journal_lines (account_id, created_at DESC);
+CREATE INDEX idx_lines_gl      ON journal_lines (gl_code, created_at DESC);
+
+-- ---------------------------------------------------------------------
+-- QUYẾT ĐỊNH DB2 — ràng buộc "tổng Nợ = tổng Có"
+--
+-- Đây là ràng buộc LIÊN HÀNG: nó nói về tập các dòng của một bút toán, không
+-- nói về từng dòng. Không CHECK nào biểu diễn được (CHECK chỉ thấy một hàng).
+--
+-- Giải pháp: CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED. Nó chạy tại
+-- COMMIT chứ không tại INSERT — đúng lúc mọi dòng đã nằm trong bảng.
+--
+-- Trigger đặt trên journal_entries (bảng THƯỜNG) chứ không trên journal_lines
+-- (bảng PARTITION) để né các giới hạn của Postgres với trigger trên bảng partition.
+-- Hệ quả: một bút toán đã cân rồi mà sau đó có ai chèn thêm dòng ở transaction
+-- KHÁC thì trigger không chạy lại. Đó chính là điều nguyên tắc append-only cấm.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION core_banking.assert_journal_balanced() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_lines      INT;
+    v_net        NUMERIC(19,4);
+    v_currencies INT;
+BEGIN
+    SELECT COUNT(*),
+           COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END), 0),
+           COUNT(DISTINCT currency)
+      INTO v_lines, v_net, v_currencies
+      FROM core_banking.journal_lines
+     WHERE journal_entry_id = NEW.id;
+
+    IF v_lines < 2 THEN
+        RAISE EXCEPTION 'Bút toán % có % dòng — tối thiểu 2 (một Nợ, một Có)',
+            NEW.entry_reference, v_lines;
+    END IF;
+
+    IF v_currencies > 1 THEN
+        RAISE EXCEPTION 'Bút toán % trộn % loại tiền — ngoài phạm vi (không có FX)',
+            NEW.entry_reference, v_currencies;
+    END IF;
+
+    IF v_net <> 0 THEN
+        RAISE EXCEPTION 'Bút toán % KHÔNG CÂN: tổng Nợ - tổng Có = %',
+            NEW.entry_reference, v_net;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER trg_journal_balanced
+    AFTER INSERT ON journal_entries
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION core_banking.assert_journal_balanced();
+
+-- Chốt số dư cuối ngày. Hai công dụng: sao kê không phải quét lại sổ cái từ đầu,
+-- và job đối chiếu có mốc để so accounts.ledger_balance với tổng bút toán.
+CREATE TABLE account_balance_snapshots (
+    account_id      BIGINT        NOT NULL REFERENCES accounts (id),
+    as_of_date      DATE          NOT NULL,
+    opening_balance NUMERIC(19,4) NOT NULL,
+    closing_balance NUMERIC(19,4) NOT NULL,
+    total_debit     NUMERIC(19,4) NOT NULL DEFAULT 0,
+    total_credit    NUMERIC(19,4) NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, as_of_date),
+    CONSTRAINT ck_snapshot_totals CHECK (total_debit >= 0 AND total_credit >= 0)
+);
+
+-- <<< HẾT KHỐI [5b]
