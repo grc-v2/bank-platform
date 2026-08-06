@@ -472,12 +472,13 @@ SET search_path = auth;
 
 CREATE TABLE users (
     id            BIGSERIAL    PRIMARY KEY,
-    username      VARCHAR(100) NOT NULL UNIQUE,
+    username      VARCHAR(100) NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
     status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
+    CONSTRAINT uq_users_username UNIQUE (username),
+    CONSTRAINT ck_users_status   CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
 );
 COMMENT ON COLUMN users.password_hash IS
     'BCrypt cho ra chuỗi 60 ký tự; để 100 phòng khi đổi sang argon2 (dài hơn)';
@@ -496,10 +497,11 @@ CREATE TABLE user_roles (
 CREATE TABLE refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    token_hash VARCHAR(64) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_refresh_tokens_hash UNIQUE (token_hash)
 );
 COMMENT ON COLUMN refresh_tokens.token_hash IS
     'Lưu HASH chứ không lưu token thô: lộ DB không đồng nghĩa lộ phiên đăng nhập';
@@ -756,7 +758,7 @@ SET search_path = customer;
 
 CREATE TABLE customers (
     id              BIGSERIAL   PRIMARY KEY,
-    customer_number VARCHAR(20) NOT NULL UNIQUE,
+    customer_number VARCHAR(20) NOT NULL,
     user_id         BIGINT,
     customer_type   VARCHAR(20) NOT NULL,
     status          VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
@@ -764,6 +766,7 @@ CREATE TABLE customers (
     risk_rating     VARCHAR(10),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_customers_number    UNIQUE (customer_number),
     CONSTRAINT ck_customers_type      CHECK (customer_type IN ('INDIVIDUAL', 'ORGANIZATION')),
     CONSTRAINT ck_customers_status    CHECK (status IN ('DRAFT', 'PENDING_KYC', 'ACTIVE', 'SUSPENDED', 'CLOSED')),
     CONSTRAINT ck_customers_kyc_level CHECK (kyc_level BETWEEN 0 AND 3),
@@ -796,9 +799,10 @@ CREATE TABLE organization_details (
     customer_id        BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
     legal_name         VARCHAR(200) NOT NULL,
     trade_name         VARCHAR(200),
-    tax_code           VARCHAR(20)  NOT NULL UNIQUE,
+    tax_code           VARCHAR(20)  NOT NULL,
     incorporation_date DATE,
-    business_type      VARCHAR(100)
+    business_type      VARCHAR(100),
+    CONSTRAINT uq_organization_tax_code UNIQUE (tax_code)
 );
 
 CREATE TABLE customer_identifications (
@@ -1021,7 +1025,7 @@ SET search_path = product;
 
 CREATE TABLE products (
     id             BIGSERIAL     PRIMARY KEY,
-    product_code   VARCHAR(30)   NOT NULL UNIQUE,
+    product_code   VARCHAR(30)   NOT NULL,
     name           VARCHAR(200)  NOT NULL,
     category       VARCHAR(30)   NOT NULL,
     currency       CHAR(3)       NOT NULL DEFAULT 'VND',
@@ -1031,6 +1035,7 @@ CREATE TABLE products (
     effective_to   DATE,
     created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_products_code     UNIQUE (product_code),
     CONSTRAINT ck_products_category CHECK (category IN ('CURRENT_ACCOUNT', 'SAVINGS_ACCOUNT', 'TERM_DEPOSIT')),
     CONSTRAINT ck_products_status   CHECK (status IN ('DRAFT', 'ACTIVE', 'RETIRED')),
     CONSTRAINT ck_products_period   CHECK (effective_to IS NULL OR effective_to > effective_from)
@@ -1253,7 +1258,7 @@ SET search_path = core_banking;
 -- cơ bản nhất của core banking.
 CREATE TABLE gl_accounts (
     id             BIGSERIAL    PRIMARY KEY,
-    gl_code        VARCHAR(20)  NOT NULL UNIQUE,
+    gl_code        VARCHAR(20)  NOT NULL,
     name           VARCHAR(200) NOT NULL,
     account_class  VARCHAR(20)  NOT NULL,
     normal_balance VARCHAR(6)   NOT NULL,
@@ -1262,6 +1267,9 @@ CREATE TABLE gl_accounts (
     currency       CHAR(3)      NOT NULL DEFAULT 'VND',
     status         VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- UNIQUE đặt tên tường minh: accounts.gl_code và journal_lines.gl_code đều
+    -- FK vào cột này, nên nó là một hợp đồng công khai chứ không phải chi tiết nội bộ.
+    CONSTRAINT uq_gl_code   UNIQUE (gl_code),
     CONSTRAINT ck_gl_class  CHECK (account_class IN ('ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE')),
     CONSTRAINT ck_gl_normal CHECK (normal_balance IN ('DEBIT', 'CREDIT')),
     CONSTRAINT ck_gl_status CHECK (status IN ('ACTIVE', 'CLOSED')),
@@ -1276,7 +1284,7 @@ COMMENT ON COLUMN gl_accounts.is_postable IS
 
 CREATE TABLE accounts (
     id                  BIGSERIAL     PRIMARY KEY,
-    account_number      VARCHAR(20)   NOT NULL UNIQUE,
+    account_number      VARCHAR(20)   NOT NULL,
     product_code        VARCHAR(30)   NOT NULL,
     primary_customer_id BIGINT        NOT NULL,
     currency            CHAR(3)       NOT NULL DEFAULT 'VND',
@@ -1291,6 +1299,7 @@ CREATE TABLE accounts (
     closed_at           TIMESTAMPTZ,
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_accounts_number    UNIQUE (account_number),
     CONSTRAINT ck_accounts_status    CHECK (status IN ('PENDING', 'ACTIVE', 'DORMANT', 'FROZEN', 'CLOSED')),
     CONSTRAINT ck_accounts_hold      CHECK (hold_amount >= 0),
     CONSTRAINT ck_accounts_overdraft CHECK (overdraft_limit >= 0),
@@ -1481,7 +1490,7 @@ Expected: `0`.
 
 CREATE TABLE journal_entries (
     id                   BIGSERIAL    PRIMARY KEY,
-    entry_reference      VARCHAR(40)  NOT NULL UNIQUE,
+    entry_reference      VARCHAR(40)  NOT NULL,
     transaction_type     VARCHAR(20)  NOT NULL,
     source_type          VARCHAR(30),
     source_id            VARCHAR(100),
@@ -1491,6 +1500,7 @@ CREATE TABLE journal_entries (
     description          VARCHAR(500),
     reversal_of_entry_id BIGINT       REFERENCES journal_entries (id),
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_journal_reference UNIQUE (entry_reference),
     CONSTRAINT ck_journal_txn_type CHECK (transaction_type IN (
         'TRANSFER', 'FEE', 'INTEREST', 'REVERSAL', 'ADJUSTMENT', 'OPENING')),
     -- REVERSAL bắt buộc trỏ về bản gốc; loại khác bắt buộc không trỏ.
@@ -1763,8 +1773,8 @@ Expected: `7`. Truy vấn này loại partition con (chúng có mặt trong `pg_
 
 CREATE TABLE transfers (
     id                         BIGSERIAL     PRIMARY KEY,
-    transfer_reference         VARCHAR(40)   NOT NULL UNIQUE,
-    idempotency_key            VARCHAR(64)   NOT NULL UNIQUE,
+    transfer_reference         VARCHAR(40)   NOT NULL,
+    idempotency_key            VARCHAR(64)   NOT NULL,
     transfer_type              VARCHAR(20)   NOT NULL,
     source_account_id          BIGINT        NOT NULL REFERENCES accounts (id),
     destination_account_id     BIGINT        REFERENCES accounts (id),
@@ -1785,6 +1795,10 @@ CREATE TABLE transfers (
     -- Constraint ĐẶT TÊN TƯỜNG MINH. Bản cũ để CHECK inline, Postgres tự đặt
     -- tên 'transfers_status_check', và đến migration sau mới phát hiện mình
     -- không biết nó tên gì. Bài học đó nằm ở đây.
+    CONSTRAINT uq_transfers_reference   UNIQUE (transfer_reference),
+    -- UNIQUE trên idempotency_key LÀ toàn bộ cơ chế chống trùng lệnh. Đặt tên
+    -- tường minh vì đây là ràng buộc mà code sẽ bắt lỗi theo tên khi client retry.
+    CONSTRAINT uq_transfers_idempotency UNIQUE (idempotency_key),
     CONSTRAINT ck_transfers_status  CHECK (status IN ('PENDING', 'PENDING_EXTERNAL', 'COMPLETED', 'FAILED', 'REVERSED')),
     CONSTRAINT ck_transfers_type    CHECK (transfer_type IN ('INTERNAL', 'EXTERNAL')),
     CONSTRAINT ck_transfers_channel CHECK (channel IN ('INTERNET', 'MOBILE', 'ATM', 'BRANCH', 'API')),
@@ -1807,14 +1821,17 @@ COMMENT ON COLUMN transfers.journal_entry_id IS
 -- Thất bại hoặc quá hạn -> bút toán ĐẢO, không bao giờ xóa bút toán gốc.
 CREATE TABLE external_transfers (
     id                      BIGSERIAL   PRIMARY KEY,
-    transfer_id             BIGINT      NOT NULL UNIQUE REFERENCES transfers (id),
+    transfer_id             BIGINT      NOT NULL REFERENCES transfers (id),
     partner_code            VARCHAR(20) NOT NULL,
     partner_ref             VARCHAR(100),
     saga_state              VARCHAR(30) NOT NULL DEFAULT 'HOLD_PLACED',
-    partner_idempotency_key VARCHAR(64) NOT NULL UNIQUE,
+    partner_idempotency_key VARCHAR(64) NOT NULL,
     deadline_at             TIMESTAMPTZ NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Một transfer chỉ có tối đa một saga liên ngân hàng.
+    CONSTRAINT uq_ext_transfer     UNIQUE (transfer_id),
+    CONSTRAINT uq_ext_idempotency  UNIQUE (partner_idempotency_key),
     CONSTRAINT ck_ext_saga_state CHECK (saga_state IN (
         'HOLD_PLACED',        -- đã treo tiền nguồn, chưa gọi đối tác
         'PARTNER_REQUESTED',  -- đã gọi, đang chờ trả lời
