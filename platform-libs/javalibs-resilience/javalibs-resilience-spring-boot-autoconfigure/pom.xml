@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.javalibs</groupId>
+    <artifactId>javalibs-resilience</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>javalibs-resilience-spring-boot-autoconfigure</artifactId>
+  <packaging>jar</packaging>
+
+  <name>javalibs :: resilience :: spring-boot-autoconfigure</name>
+  <description>
+    Auto-configuration providing CircuitBreaker/Retry/RateLimiter registries with
+    platform defaults (javalibs.resilience.*) and an opt-in circuit-breaking
+    customizer for all RestClient builders.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-resilience-spring</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
+    </dependency>
+
+    <!-- Optional: each registry only auto-configures when its module is present -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-circuitbreaker</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-retry</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-ratelimiter</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-web</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!--
+      Boot 4 split RestClientCustomizer out of spring-boot-autoconfigure into its own
+      artifact, moving the package to org.springframework.boot.restclient. Referenced
+      directly by ResilienceRestAutoConfiguration.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-restclient</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!--
+      Test-only: lets AutoConfigurationOrderingReferencesTest resolve the
+      afterName() FQCNs above via Class.forName and catch a relocation. Not a
+      main-scope dependency — the annotation-driven style stays purely
+      optional for consuming services (see the class javadoc).
+    -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-spring-boot4</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>
