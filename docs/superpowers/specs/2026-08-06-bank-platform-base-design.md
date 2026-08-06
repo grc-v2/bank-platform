@@ -73,7 +73,7 @@ bank-platform/
 │                                 parent → org.springframework.boot:spring-boot-starter-parent:4.1.0
 │                                 modules → platform-libs, bank-common, services/*
 │                                 dependencyManagement → import io.javalibs:javalibs-dependencies:2.0.0-SNAPSHOT
-│                                 profile "fast" → bỏ platform-libs khỏi reactor
+│                                 profile "with-libs" (activeByDefault) → thêm platform-libs vào reactor
 ├── platform-libs/                javalibs-4.1 nguyên vẹn — KHÔNG sửa một dòng nào
 │   ├── pom.xml                   io.javalibs:javalibs-root (không khai <parent>)
 │   └── javalibs-*/               16 module
@@ -97,6 +97,8 @@ bank-platform/
 ### Vì sao aggregation tách khỏi inheritance
 
 `javalibs-root/pom.xml` không có `<parent>` — nó tự là root. Quyết định D2 cấm sửa nó. Maven tách rời hai khái niệm: một module được liệt kê trong `<modules>` **không bắt buộc** khai aggregator đó làm `<parent>`. Nhờ vậy `platform-libs` tham gia reactor (đúng thứ tự build: javalibs → bank-common → services) mà vẫn nguyên vẹn 100%.
+
+**Cách bật/tắt platform-libs khỏi reactor.** Maven chỉ cho profile **thêm** module, không cho bớt — nên không thể làm profile `fast` "loại platform-libs ra". Đảo ngược: `<modules>` gốc chỉ có `bank-common` + services; profile `with-libs` với `<activeByDefault>true</activeByDefault>` thêm `platform-libs`. Mặc định build đủ; muốn nhanh thì `mvn -P'!with-libs' clean install` sau khi javalibs đã nằm trong local repo.
 
 ### Starter javalibs theo service
 
@@ -123,7 +125,7 @@ Spring Cloud đi theo release train riêng, bám sát version Spring Boot. **Ch�
 
 ## 5. Cấu trúc package rỗng
 
-Mọi thư mục rỗng giữ bằng `.gitkeep`. Toàn repo có **đúng 7 file `.java`**, đều là main class `@SpringBootApplication`.
+Mọi thư mục rỗng giữ bằng `.gitkeep`. Toàn repo có **đúng 6 file `.java`** — một main class `@SpringBootApplication` cho mỗi service (gateway, auth, customer, product, core-banking, notification). `bank-common` không có file `.java` nào.
 
 ### Mức A — `core-banking-service` (`io.bankplatform.corebanking`)
 
@@ -260,7 +262,7 @@ Auth vẫn không biết gì về ngân hàng: các schema khác trỏ **vào** 
 | `product_interest_rates` | bậc thang: `tier_from`, `tier_to`, `term_months`, `annual_rate NUMERIC(9,6)`, `effective_from/to` |
 | `product_fees` | `fee_code`, `fee_type` (FLAT/PERCENT/TIERED), `amount`, `percent`, `min_amount`, `max_amount`, `charge_event`, `effective_from/to` |
 | `product_limits` | `limit_code`, `scope` (PER_TRANSACTION/PER_DAY/PER_MONTH), `channel` (ANY/INTERNET/MOBILE/ATM/BRANCH), `max_amount`, `max_count`, `effective_from/to` |
-| `product_eligibility_rules` | `rule_type` (MIN_AGE/MAX_AGE/MIN_KYC_LEVEL/CUSTOMER_TYPE/MIN_RISK_RATING), `operator`, `value` |
+| `product_eligibility_rules` | `rule_type` (MIN_AGE/MAX_AGE/MIN_KYC_LEVEL/CUSTOMER_TYPE/MAX_RISK_RATING), `operator`, `rule_value` |
 | `product_gl_mappings` | `product_id`, `purpose` (PRINCIPAL/INTEREST_PAYABLE/INTEREST_EXPENSE/FEE_INCOME), `gl_code` |
 | `outbox` | phát `product.activated.v1` để service khác vô hiệu cache |
 
@@ -293,7 +295,8 @@ Trên bố cục này ràng buộc yếu hơn ấy vẫn đủ mạnh: `created_
 
 **Bỏ `accounts.owner_user_id` của `V2`.** Cột đó trỏ mềm sang `auth.users`; giờ chủ tài khoản là **khách hàng**, không phải tài khoản đăng nhập, và `customer.customers.user_id` đã giữ liên kết sang `auth`. Giữ cả hai đường là hai nguồn sự thật cho cùng một quan hệ. `schema.sql` thay thế `V2` nên không có ràng buộc tương thích ngược nào cần giữ.
 
-`accounts.primary_customer_id` cố ý trùng lặp với dòng `PRIMARY` trong `account_holders`: nó là phi chuẩn hóa có chủ đích để truy vấn "tài khoản của tôi" không phải join. Quy tắc: mỗi `accounts` có đúng một dòng `account_holders` với `holder_role='PRIMARY'` và `customer_id` của dòng đó bằng `primary_customer_id`. Bất biến này do ứng dụng giữ, không có constraint DB nào biểu diễn được — ghi vào comment của bảng.
+`accounts.primary_customer_id` cố ý trùng lặp với dòng `PRIMARY` trong `account_holders`: nó là phi chuẩn hóa có chủ đích để truy vấn "tài khoản của tôi" không phải join. Quy tắc: mỗi `accounts` có đúng một dòng `account_holders` với `holder_role='PRIMARY'`, và `customer_id` của dòng đó bằng `primary_customer_id`.
+Vế đầu **DB giữ được** bằng partial unique index `uq_account_one_primary ON account_holders (account_id) WHERE holder_role = 'PRIMARY'`. Vế sau — hai giá trị bằng nhau — nằm ở hai bảng nên không constraint nào biểu diễn được; ứng dụng giữ, và ghi vào `COMMENT ON COLUMN`.
 
 `CHECK`: `ck_accounts_hold_non_negative` (`hold_amount >= 0`) và `ck_accounts_overdraft` (`ledger_balance - hold_amount >= -overdraft_limit`). CHECK viết bằng biểu thức gốc chứ **không** tham chiếu cột `available_balance` — Postgres hạn chế việc dùng cột generated trong ràng buộc, và biểu thức gốc thì luôn hợp lệ.
 
@@ -343,7 +346,9 @@ Giữ nguyên 4 bảng của `V1__notification_init.sql` (`processed_events`, `n
 
 Mỗi khối schema dùng `SET ROLE <svc_user>` để bảng thuộc sở hữu đúng service user, `RESET ROLE` ở cuối. Nhờ thế file tự đủ: chạy một lần là có đủ schema, user, quyền, bảng, seed.
 
-**Seed data**: chart of accounts tối thiểu **9 GL** — tiền mặt, tiền gửi KH thanh toán, tiền gửi KH tiết kiệm, lãi phải trả, thu nhập phí, chi phí lãi, clearing/suspense, vốn điều lệ, lợi nhuận giữ lại; 3 sản phẩm mẫu `CA_STANDARD` / `SA_STANDARD` / `TD_12M` kèm rate + fee + limit + GL mapping; và 4 partition `journal_lines` (2026-08, 2026-09, 2026-10, DEFAULT). **Không** seed khách hàng, **không** seed tài khoản.
+**Seed data**: chart of accounts tối thiểu **9 GL** — tiền mặt, tiền gửi KH thanh toán, tiền gửi KH tiết kiệm, lãi phải trả, thu nhập phí, chi phí lãi, clearing/suspense, vốn điều lệ, lợi nhuận giữ lại; và 3 sản phẩm mẫu `CA_STANDARD` / `SA_STANDARD` / `TD_12M` kèm rate + fee + limit + GL mapping. **Không** seed khách hàng, **không** seed tài khoản.
+
+Bốn partition của `journal_lines` (2026-08, 2026-09, 2026-10, DEFAULT) thuộc khối `[5] core_banking` chứ không thuộc `[7] seed` — chúng là cấu trúc, không phải dữ liệu: bảng partition không có partition nào thì mọi INSERT đều lỗi.
 
 Ba bảng `outbox` (ở `customer`, `product`, `core_banking`) có cấu trúc giống hệt nhau nhưng là **ba bảng độc lập**, mỗi bảng thuộc sở hữu của service tương ứng. Không dùng chung, không FK giữa chúng.
 
@@ -378,7 +383,7 @@ Mỗi service còn có `Dockerfile` (multi-stage, `eclipse-temurin:21`), `README
 
 `git init` tại `bank-platform`; `.gitignore` / `.editorconfig` / `.gitattributes` / `.env.sample` theo template của skill `dr-jskill`.
 `.github/workflows/ci.yml`: JDK 21 (khớp `java.version` của javalibs), `mvn -B clean verify` từ root.
-`platform-libs` nằm trong reactor nên CI build cả javalibs — chậm hơn nhưng đảm bảo bản javalibs trong repo thực sự compile được. Profile `-P fast` để dev bỏ qua sau lần install đầu.
+`platform-libs` nằm trong reactor (profile `with-libs`, mặc định bật) nên CI build cả javalibs — chậm hơn nhưng đảm bảo bản javalibs trong repo thực sự compile được. Dev bỏ qua sau lần install đầu bằng `mvn -P'!with-libs' ...`.
 
 ---
 
