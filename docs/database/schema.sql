@@ -113,12 +113,13 @@ SET search_path = auth;
 
 CREATE TABLE users (
     id            BIGSERIAL    PRIMARY KEY,
-    username      VARCHAR(100) NOT NULL UNIQUE,
+    username      VARCHAR(100) NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
     status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
+    CONSTRAINT uq_users_username UNIQUE (username),
+    CONSTRAINT ck_users_status   CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
 );
 COMMENT ON COLUMN users.password_hash IS
     'BCrypt cho ra chuỗi 60 ký tự; để 100 phòng khi đổi sang argon2 (dài hơn)';
@@ -137,10 +138,11 @@ CREATE TABLE user_roles (
 CREATE TABLE refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    token_hash VARCHAR(64) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_refresh_tokens_hash UNIQUE (token_hash)
 );
 COMMENT ON COLUMN refresh_tokens.token_hash IS
     'Lưu HASH chứ không lưu token thô: lộ DB không đồng nghĩa lộ phiên đăng nhập';
