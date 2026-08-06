@@ -673,3 +673,135 @@ RESET ROLE;
 SET search_path = public;
 
 -- <<< HẾT KHỐI [4]
+
+-- =====================================================================
+-- [5] SCHEMA core_banking — TRÁI TIM.
+--     Thứ tự tạo bảng trong khối này là BẮT BUỘC: gl_accounts trước (mọi thứ
+--     FK vào gl_code), rồi accounts, rồi sổ cái, rồi giao dịch.
+-- =====================================================================
+SET ROLE core_svc;
+SET search_path = core_banking;
+
+-- ---------------------------------------------------------------------
+-- [5a] Chart of accounts, tài khoản khách hàng, hold
+-- ---------------------------------------------------------------------
+
+-- SỔ CÁI. Phân biệt với accounts: gl_accounts là sổ cái của ngân hàng,
+-- accounts là sổ phụ của khách hàng. Số dư mọi tài khoản khách hàng của cùng
+-- một sản phẩm cộng lại phải bằng số dư GL tương ứng — đó là phép đối chiếu
+-- cơ bản nhất của core banking.
+CREATE TABLE gl_accounts (
+    id             BIGSERIAL    PRIMARY KEY,
+    gl_code        VARCHAR(20)  NOT NULL,
+    name           VARCHAR(200) NOT NULL,
+    account_class  VARCHAR(20)  NOT NULL,
+    normal_balance VARCHAR(6)   NOT NULL,
+    parent_gl_code VARCHAR(20)  REFERENCES gl_accounts (gl_code),
+    is_postable    BOOLEAN      NOT NULL DEFAULT TRUE,
+    currency       CHAR(3)      NOT NULL DEFAULT 'VND',
+    status         VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- UNIQUE đặt tên tường minh: accounts.gl_code và journal_lines.gl_code đều
+    -- FK vào cột này, nên nó là một hợp đồng công khai chứ không phải chi tiết nội bộ.
+    CONSTRAINT uq_gl_code   UNIQUE (gl_code),
+    CONSTRAINT ck_gl_class  CHECK (account_class IN ('ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE')),
+    CONSTRAINT ck_gl_normal CHECK (normal_balance IN ('DEBIT', 'CREDIT')),
+    CONSTRAINT ck_gl_status CHECK (status IN ('ACTIVE', 'CLOSED')),
+    -- Nguyên lý kế toán kép, viết thành ràng buộc thay vì để trong đầu người ta:
+    -- TÀI SẢN và CHI PHÍ tăng bên NỢ; NỢ PHẢI TRẢ, VỐN và THU NHẬP tăng bên CÓ.
+    CONSTRAINT ck_gl_class_normal CHECK (
+           (account_class IN ('ASSET', 'EXPENSE')              AND normal_balance = 'DEBIT')
+        OR (account_class IN ('LIABILITY', 'EQUITY', 'INCOME') AND normal_balance = 'CREDIT'))
+);
+COMMENT ON COLUMN gl_accounts.is_postable IS
+    'FALSE = tài khoản tổng hợp, chỉ để gom số. Hạch toán thẳng vào nó là sai';
+
+CREATE TABLE accounts (
+    id                  BIGSERIAL     PRIMARY KEY,
+    account_number      VARCHAR(20)   NOT NULL,
+    product_code        VARCHAR(30)   NOT NULL,
+    primary_customer_id BIGINT        NOT NULL,
+    currency            CHAR(3)       NOT NULL DEFAULT 'VND',
+    status              VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    gl_code             VARCHAR(20)   NOT NULL REFERENCES gl_accounts (gl_code),
+    ledger_balance      NUMERIC(19,4) NOT NULL DEFAULT 0,
+    hold_amount         NUMERIC(19,4) NOT NULL DEFAULT 0,
+    available_balance   NUMERIC(19,4) GENERATED ALWAYS AS (ledger_balance - hold_amount) STORED,
+    overdraft_limit     NUMERIC(19,4) NOT NULL DEFAULT 0,
+    version             INT           NOT NULL DEFAULT 0,
+    opened_at           TIMESTAMPTZ,
+    closed_at           TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_accounts_number    UNIQUE (account_number),
+    CONSTRAINT ck_accounts_status    CHECK (status IN ('PENDING', 'ACTIVE', 'DORMANT', 'FROZEN', 'CLOSED')),
+    CONSTRAINT ck_accounts_hold      CHECK (hold_amount >= 0),
+    CONSTRAINT ck_accounts_overdraft CHECK (overdraft_limit >= 0),
+    -- Viết bằng biểu thức GỐC chứ không tham chiếu cột available_balance:
+    -- Postgres hạn chế dùng cột GENERATED trong ràng buộc, còn biểu thức gốc
+    -- thì luôn hợp lệ và cho ra đúng cùng một ý nghĩa.
+    CONSTRAINT ck_accounts_available CHECK (ledger_balance - hold_amount >= -overdraft_limit),
+    CONSTRAINT ck_accounts_closed    CHECK (status <> 'CLOSED' OR closed_at IS NOT NULL)
+);
+COMMENT ON TABLE accounts IS
+    'CHỈ tài khoản khách hàng. KHÔNG có tài khoản SYSTEM (quyết định DB3): phía nội bộ của bút toán đi thẳng vào gl_code với account_id NULL';
+COMMENT ON COLUMN accounts.product_code IS
+    'Tham chiếu MỀM sang product.products.product_code';
+COMMENT ON COLUMN accounts.primary_customer_id IS
+    'Tham chiếu MỀM sang customer.customers.id. Cố ý trùng lặp với dòng PRIMARY trong account_holders để truy vấn "tài khoản của tôi" không phải join. BẤT BIẾN do ứng dụng giữ: luôn tồn tại account_holders(id, primary_customer_id, PRIMARY)';
+COMMENT ON COLUMN accounts.ledger_balance IS
+    'Số dư sổ cái, lưu sẵn (quyết định DB4). Cập nhật CÙNG transaction với bút toán, không bao giờ tính lại từ journal_lines lúc đọc';
+COMMENT ON COLUMN accounts.available_balance IS
+    'Số dư KHẢ DỤNG = sổ cái trừ tiền đang treo. Đây là con số khách hàng nhìn thấy và là con số dùng để duyệt giao dịch';
+COMMENT ON COLUMN accounts.version IS
+    'Optimistic lock cho JPA @Version. Hai giao dịch cùng trừ một tài khoản là tình huống thật, không phải giả định';
+
+-- Một tài khoản NHIỀU CHỦ: đồng sở hữu, người được ủy quyền ký.
+CREATE TABLE account_holders (
+    account_id  BIGINT      NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+    customer_id BIGINT      NOT NULL,
+    holder_role VARCHAR(30) NOT NULL,
+    added_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, customer_id),
+    CONSTRAINT ck_holder_role CHECK (holder_role IN ('PRIMARY', 'JOINT', 'AUTHORIZED_SIGNATORY'))
+);
+COMMENT ON COLUMN account_holders.customer_id IS
+    'Tham chiếu MỀM sang customer.customers.id';
+
+-- Partial unique index: mỗi tài khoản CHỈ MỘT chủ chính. Đây là nửa ràng buộc
+-- mà DB giữ được; nửa còn lại (customer_id của dòng này == accounts.primary_customer_id)
+-- nằm ở hai bảng nên ứng dụng phải giữ.
+CREATE UNIQUE INDEX uq_account_one_primary
+    ON account_holders (account_id) WHERE holder_role = 'PRIMARY';
+
+-- HOLD = tiền đã bị giữ nhưng CHƯA hạch toán. Đây là lý do quẹt thẻ xong tiền
+-- "treo" mà số dư sổ cái chưa đổi. Hold hết hạn mà không capture thì tự nhả.
+CREATE TABLE account_holds (
+    id             BIGSERIAL     PRIMARY KEY,
+    account_id     BIGINT        NOT NULL REFERENCES accounts (id),
+    amount         NUMERIC(19,4) NOT NULL,
+    reason         VARCHAR(20)   NOT NULL,
+    reference_type VARCHAR(30),
+    reference_id   VARCHAR(100),
+    status         VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
+    placed_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ,
+    released_at    TIMESTAMPTZ,
+    CONSTRAINT ck_hold_amount   CHECK (amount > 0),
+    CONSTRAINT ck_hold_reason   CHECK (reason IN ('TRANSFER', 'CARD_AUTH', 'LEGAL', 'FEE')),
+    CONSTRAINT ck_hold_status   CHECK (status IN ('ACTIVE', 'RELEASED', 'CAPTURED', 'EXPIRED')),
+    CONSTRAINT ck_hold_released CHECK (status = 'ACTIVE' OR released_at IS NOT NULL)
+);
+COMMENT ON COLUMN account_holds.status IS
+    'CAPTURED = đã chuyển thành bút toán thật. RELEASED = nhả không hạch toán. EXPIRED = quá hạn, job quét nhả';
+
+CREATE INDEX idx_accounts_customer ON accounts (primary_customer_id);
+CREATE INDEX idx_accounts_product  ON accounts (product_code);
+CREATE INDEX idx_accounts_gl       ON accounts (gl_code);
+CREATE INDEX idx_holders_customer  ON account_holders (customer_id);
+-- Hai partial index cùng lọc ACTIVE nhưng phục vụ hai truy vấn khác nhau:
+-- một cho "tổng tiền treo của tài khoản này", một cho job quét hold quá hạn.
+CREATE INDEX idx_holds_active ON account_holds (account_id) WHERE status = 'ACTIVE';
+CREATE INDEX idx_holds_expiry ON account_holds (expires_at) WHERE status = 'ACTIVE';
+
+-- <<< HẾT KHỐI [5a]
