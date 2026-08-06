@@ -1043,15 +1043,28 @@ CREATE TABLE transfers (
     CONSTRAINT ck_transfers_channel CHECK (channel IN ('INTERNET', 'MOBILE', 'ATM', 'BRANCH', 'API')),
     CONSTRAINT ck_transfers_amount  CHECK (amount > 0 AND fee_amount >= 0),
     -- Chuyển nội bộ phải có tài khoản đích trong hệ thống; chuyển liên ngân hàng
-    -- phải có số tài khoản + mã ngân hàng đối tác. Không cho lẫn lộn.
+    -- phải có số tài khoản + mã ngân hàng đối tác. Mỗi nhánh vừa BẮT BUỘC trường
+    -- của loại mình, vừa CẤM trường của loại kia — nếu chỉ bắt buộc mà không cấm
+    -- thì một dòng EXTERNAL vẫn mang được destination_account_id, và nó trông như
+    -- cả hai loại giao dịch cùng lúc.
     CONSTRAINT ck_transfers_target  CHECK (
-           (transfer_type = 'INTERNAL' AND destination_account_id IS NOT NULL)
-        OR (transfer_type = 'EXTERNAL' AND destination_account_number IS NOT NULL
-                                       AND destination_bank_code IS NOT NULL)),
-    CONSTRAINT ck_transfers_self    CHECK (destination_account_id IS NULL OR destination_account_id <> source_account_id)
+           (transfer_type = 'INTERNAL'
+                AND destination_account_id     IS NOT NULL
+                AND destination_account_number IS NULL
+                AND destination_bank_code      IS NULL)
+        OR (transfer_type = 'EXTERNAL'
+                AND destination_account_number IS NOT NULL
+                AND destination_bank_code      IS NOT NULL
+                AND destination_account_id     IS NULL)),
+    CONSTRAINT ck_transfers_self    CHECK (destination_account_id IS NULL OR destination_account_id <> source_account_id),
+    -- COMPLETED nghĩa là tiền ĐÃ dịch chuyển. Không có journal_entry_id thì không
+    -- có bút toán nào phía sau — tức là báo tiền đã chuyển mà sổ cái không biết.
+    -- Cùng khuôn với ck_accrual_posted và ck_fee_charge_posted bên dưới.
+    CONSTRAINT ck_transfers_completed_posted CHECK (
+        status <> 'COMPLETED' OR journal_entry_id IS NOT NULL)
 );
 COMMENT ON COLUMN transfers.idempotency_key IS
-    'Client gửi lại cùng key = cùng một lệnh, không tạo giao dịch thứ hai. UNIQUE là toàn bộ cơ chế, không cần code kiểm tra trước';
+    'Client gửi lại cùng key = cùng một lệnh. UNIQUE ở đây đảm bảo AN TOÀN TIỀN BẠC (không bao giờ trừ hai lần) mà không cần code kiểm tra trước. Nhưng nó CHƯA làm endpoint idempotent: lần gọi lại nhận unique_violation chứ không nhận lại kết quả cũ. Muốn idempotent thật, tầng ứng dụng phải bắt vi phạm đó rồi tra và trả về chính transfer đã tạo';
 COMMENT ON COLUMN transfers.journal_entry_id IS
     'NULL khi chưa hạch toán (PENDING). Bút toán là sự thật; transfers chỉ là ý định';
 
@@ -1081,6 +1094,8 @@ CREATE TABLE external_transfers (
 );
 COMMENT ON COLUMN external_transfers.partner_idempotency_key IS
     'Idempotency với ĐỐI TÁC (khác idempotency_key với client): retry gọi partner dùng lại đúng key này';
+COMMENT ON COLUMN external_transfers.saga_state IS
+    'BẤT BIẾN DO ỨNG DỤNG GIỮ: saga_state và transfers.status là hai máy trạng thái mô tả cùng một sự việc và phải khớp nhau (PARTNER_CONFIRMED <-> COMPLETED, PARTNER_REJECTED/TIMED_OUT -> COMPENSATED <-> REVERSED). CHECK không với sang bảng khác được nên DB không chặn nổi việc chúng trôi lệch — cập nhật cả hai trong CÙNG transaction';
 
 -- Velocity check: đã dùng bao nhiêu hạn mức trong cửa sổ nào.
 -- Khuôn hạn mức nằm ở product.product_limits; bảng này là mức đã tiêu.
@@ -1097,6 +1112,8 @@ CREATE TABLE transfer_limit_usage (
 );
 COMMENT ON COLUMN transfer_limit_usage.window_start IS
     'Ngày đầu cửa sổ: hạn mức ngày thì là chính ngày đó, hạn mức tháng thì là ngày 01';
+COMMENT ON COLUMN transfer_limit_usage.limit_code IS
+    'Khớp product.product_limits.limit_code nhưng KHÔNG có FK (xuyên schema). Cái giá của ranh giới service: giá trị ở đây là chuỗi tự do, gõ sai hoặc đổi tên bên product mà không đồng bộ sẽ làm hạn mức âm thầm không được đếm. Đối chiếu định kỳ là việc của ứng dụng';
 
 -- Dự thu lãi HẰNG NGÀY, hạch toán định kỳ. UNIQUE(account_id, accrual_date)
 -- là toàn bộ cơ chế chống chạy EOD hai lần — không cần cờ "đã chạy chưa".
