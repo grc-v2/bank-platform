@@ -289,6 +289,10 @@ CREATE TABLE customers (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_customers_number    UNIQUE (customer_number),
+    -- Khoá phụ này tồn tại CHỈ để hai bảng chi tiết bên dưới FK vào được theo cặp
+    -- (id, customer_type). Nhờ nó, DB tự chặn việc gắn hồ sơ tổ chức cho khách
+    -- hàng cá nhân — mẫu "disjoint subtype" kinh điển của mô hình party.
+    CONSTRAINT uq_customers_id_type   UNIQUE (id, customer_type),
     CONSTRAINT ck_customers_type      CHECK (customer_type IN ('INDIVIDUAL', 'ORGANIZATION')),
     CONSTRAINT ck_customers_status    CHECK (status IN ('DRAFT', 'PENDING_KYC', 'ACTIVE', 'SUSPENDED', 'CLOSED')),
     CONSTRAINT ck_customers_kyc_level CHECK (kyc_level BETWEEN 0 AND 3),
@@ -303,8 +307,13 @@ COMMENT ON COLUMN customers.kyc_level IS
 
 -- Mô hình PARTY: bảng chung + bảng chi tiết theo loại. Thay cho một bảng 40 cột
 -- mà nửa số cột luôn NULL tùy loại khách hàng.
+-- customer_type lặp lại ở bảng con KHÔNG phải dư thừa: nó là nửa còn lại của FK
+-- theo cặp. CHECK ghim nó bằng 'INDIVIDUAL', FK bắt cặp phải khớp customers,
+-- nên một khách hàng ORGANIZATION không thể có dòng ở đây. DB tự chặn, không
+-- cần trigger, không đẩy bất biến sang code chưa viết.
 CREATE TABLE individual_details (
-    customer_id    BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id    BIGINT       PRIMARY KEY,
+    customer_type  VARCHAR(20)  NOT NULL DEFAULT 'INDIVIDUAL',
     first_name     VARCHAR(100) NOT NULL,
     last_name      VARCHAR(100) NOT NULL,
     date_of_birth  DATE         NOT NULL,
@@ -312,24 +321,37 @@ CREATE TABLE individual_details (
     nationality    CHAR(2)      NOT NULL DEFAULT 'VN',
     occupation     VARCHAR(100),
     marital_status VARCHAR(20),
+    CONSTRAINT fk_individual_customer FOREIGN KEY (customer_id, customer_type)
+        REFERENCES customers (id, customer_type) ON DELETE CASCADE,
+    CONSTRAINT ck_individual_type    CHECK (customer_type = 'INDIVIDUAL'),
     CONSTRAINT ck_individual_gender  CHECK (gender IS NULL OR gender IN ('MALE', 'FEMALE', 'OTHER')),
     CONSTRAINT ck_individual_marital CHECK (marital_status IS NULL OR marital_status IN ('SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED')),
     CONSTRAINT ck_individual_dob     CHECK (date_of_birth < CURRENT_DATE)
 );
 
 CREATE TABLE organization_details (
-    customer_id        BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id        BIGINT       PRIMARY KEY,
+    customer_type      VARCHAR(20)  NOT NULL DEFAULT 'ORGANIZATION',
     legal_name         VARCHAR(200) NOT NULL,
     trade_name         VARCHAR(200),
     tax_code           VARCHAR(20)  NOT NULL,
     incorporation_date DATE,
     business_type      VARCHAR(100),
+    CONSTRAINT fk_organization_customer FOREIGN KEY (customer_id, customer_type)
+        REFERENCES customers (id, customer_type) ON DELETE CASCADE,
+    CONSTRAINT ck_organization_type     CHECK (customer_type = 'ORGANIZATION'),
     CONSTRAINT uq_organization_tax_code UNIQUE (tax_code)
 );
 
+-- KHÔNG CASCADE. Bốn bảng tiếp theo (giấy tờ, KYC, tài liệu KYC, đánh giá rủi ro)
+-- là BẰNG CHỨNG TUÂN THỦ: chúng phải sống sót qua việc đóng hồ sơ khách hàng, vì
+-- nghĩa vụ lưu trữ KYC/AML không kết thúc khi quan hệ với khách hàng kết thúc.
+-- Hệ quả cố ý: `DELETE FROM customers` sẽ bị FK từ chối. Đóng khách hàng đi bằng
+-- `status = 'CLOSED'`, không xoá vật lý. Nếu thật sự phải xoá (yêu cầu xoá dữ liệu
+-- cá nhân), đó là một quy trình có phê duyệt, không phải một câu lệnh DELETE.
 CREATE TABLE customer_identifications (
     id           BIGSERIAL    PRIMARY KEY,
-    customer_id  BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id  BIGINT       NOT NULL REFERENCES customers (id),
     id_type      VARCHAR(30)  NOT NULL,
     id_number    VARCHAR(50)  NOT NULL,
     issued_date  DATE,
@@ -380,7 +402,7 @@ COMMENT ON COLUMN customer_contacts.verified_at IS
 -- không phải "đã duyệt một lần là xong đời".
 CREATE TABLE kyc_verifications (
     id            BIGSERIAL    PRIMARY KEY,
-    customer_id   BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id   BIGINT       NOT NULL REFERENCES customers (id),
     level         SMALLINT     NOT NULL,
     status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     method        VARCHAR(20)  NOT NULL,
@@ -402,7 +424,7 @@ COMMENT ON COLUMN kyc_verifications.decided_by IS
 
 CREATE TABLE kyc_documents (
     id                  BIGSERIAL    PRIMARY KEY,
-    kyc_verification_id BIGINT       NOT NULL REFERENCES kyc_verifications (id) ON DELETE CASCADE,
+    kyc_verification_id BIGINT       NOT NULL REFERENCES kyc_verifications (id),
     doc_type            VARCHAR(50)  NOT NULL,
     storage_key         VARCHAR(500) NOT NULL,
     checksum            VARCHAR(64)  NOT NULL,
@@ -417,7 +439,7 @@ COMMENT ON COLUMN kyc_documents.checksum IS
 -- "tại thời điểm mở tài khoản, khách này được đánh giá thế nào".
 CREATE TABLE customer_risk_assessments (
     id          BIGSERIAL   PRIMARY KEY,
-    customer_id BIGINT      NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id BIGINT      NOT NULL REFERENCES customers (id),
     rating      VARCHAR(10) NOT NULL,
     score       INT         NOT NULL,
     reason      JSONB,
@@ -447,6 +469,12 @@ CREATE INDEX idx_customers_user      ON customers (user_id);
 CREATE INDEX idx_customers_status    ON customers (status);
 CREATE INDEX idx_ident_customer      ON customer_identifications (customer_id);
 CREATE INDEX idx_address_customer    ON customer_addresses (customer_id);
+-- Mỗi khách hàng, mỗi loại địa chỉ, tại một thời điểm chỉ có MỘT dòng đang hiệu lực.
+-- Không có ràng buộc này thì hai dòng cùng valid_to IS NULL là hợp lệ với DB, và
+-- truy vấn "địa chỉ tại ngày X" không còn đảm bảo trả về đúng một kết quả — đúng
+-- cái làm hỏng việc in sao kê theo địa chỉ tại kỳ đó.
+CREATE UNIQUE INDEX uq_address_current ON customer_addresses (customer_id, address_type)
+    WHERE valid_to IS NULL;
 CREATE INDEX idx_contact_customer    ON customer_contacts (customer_id);
 CREATE INDEX idx_kyc_customer        ON kyc_verifications (customer_id, submitted_at DESC);
 CREATE INDEX idx_kyc_open            ON kyc_verifications (submitted_at) WHERE status IN ('PENDING', 'IN_REVIEW');
