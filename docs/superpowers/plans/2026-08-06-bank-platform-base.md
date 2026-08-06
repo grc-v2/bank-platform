@@ -1321,7 +1321,7 @@ INSERT INTO product.product_fees (product_id, fee_code, fee_type, charge_event)
   SELECT id, 'TIER_TEST', 'TIERED', 'ACCOUNT_OPEN' FROM product.products WHERE product_code='TMP';"
 ```
 
-Expected: FAIL với `violates check constraint "ck_fee_type"`.
+Expected: FAIL với `violates check constraint` — tên constraint là **`ck_fee_shape` hoặc `ck_fee_type`**, cả hai đều chấp nhận được. Dòng đó vi phạm cả hai (`TIERED` không nằm trong enum, và cũng không khớp nhánh `FLAT` lẫn `PERCENT` của `ck_fee_shape`), và Postgres không đảm bảo báo cái nào trước. Điều cần chứng minh là INSERT bị từ chối, không phải nó bị từ chối bởi constraint nào.
 
 - [ ] **Step 5: Reset lại DB cho sạch dữ liệu thử**
 
