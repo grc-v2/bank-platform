@@ -486,3 +486,149 @@ RESET ROLE;
 SET search_path = public;
 
 -- <<< HẾT KHỐI [3]
+
+-- ---------------------------------------------------------------------
+-- [4] SCHEMA product — nơi NGHIỆP VỤ SỐNG.
+--     Lãi suất, biểu phí, hạn mức, điều kiện mở: tất cả là DỮ LIỆU, không phải
+--     hằng số trong code. Đổi biểu phí không được phép là một lần deploy.
+--
+--     Mọi bảng đều có effective_from/effective_to: đổi thì THÊM DÒNG, không sửa
+--     dòng cũ — nếu không, sao kê tháng trước tính lại sẽ ra số khác.
+-- ---------------------------------------------------------------------
+SET ROLE product_svc;
+SET search_path = product;
+
+CREATE TABLE products (
+    id             BIGSERIAL     PRIMARY KEY,
+    product_code   VARCHAR(30)   NOT NULL,
+    name           VARCHAR(200)  NOT NULL,
+    category       VARCHAR(30)   NOT NULL,
+    currency       CHAR(3)       NOT NULL DEFAULT 'VND',
+    status         VARCHAR(20)   NOT NULL DEFAULT 'DRAFT',
+    description    VARCHAR(1000),
+    effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_products_code     UNIQUE (product_code),
+    CONSTRAINT ck_products_category CHECK (category IN ('CURRENT_ACCOUNT', 'SAVINGS_ACCOUNT', 'TERM_DEPOSIT')),
+    CONSTRAINT ck_products_status   CHECK (status IN ('DRAFT', 'ACTIVE', 'RETIRED')),
+    CONSTRAINT ck_products_period   CHECK (effective_to IS NULL OR effective_to > effective_from)
+);
+
+-- Lãi suất BẬC THANG: theo số dư (tier_from/tier_to) hoặc theo kỳ hạn (term_months).
+CREATE TABLE product_interest_rates (
+    id             BIGSERIAL     PRIMARY KEY,
+    product_id     BIGINT        NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    tier_from      NUMERIC(19,4) NOT NULL DEFAULT 0,
+    tier_to        NUMERIC(19,4),
+    term_months    INT,
+    annual_rate    NUMERIC(9,6)  NOT NULL,
+    effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
+    CONSTRAINT ck_rate_tier   CHECK (tier_to IS NULL OR tier_to > tier_from),
+    CONSTRAINT ck_rate_value  CHECK (annual_rate >= 0 AND annual_rate < 1),
+    CONSTRAINT ck_rate_term   CHECK (term_months IS NULL OR term_months > 0),
+    CONSTRAINT ck_rate_period CHECK (effective_to IS NULL OR effective_to > effective_from)
+);
+COMMENT ON COLUMN product_interest_rates.annual_rate IS
+    'Tỉ lệ thập phân: 0.045000 = 4.5%/năm. CHECK < 1 chặn lỗi nhập 4.5 thay vì 0.045';
+COMMENT ON COLUMN product_interest_rates.tier_to IS
+    'NULL = bậc cao nhất, không giới hạn trên';
+
+CREATE TABLE product_fees (
+    id             BIGSERIAL     PRIMARY KEY,
+    product_id     BIGINT        NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    fee_code       VARCHAR(30)   NOT NULL,
+    fee_type       VARCHAR(20)   NOT NULL,
+    amount         NUMERIC(19,4),
+    percent        NUMERIC(9,6),
+    min_amount     NUMERIC(19,4),
+    max_amount     NUMERIC(19,4),
+    charge_event   VARCHAR(40)   NOT NULL,
+    currency       CHAR(3)       NOT NULL DEFAULT 'VND',
+    effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
+    CONSTRAINT ck_fee_type  CHECK (fee_type IN ('FLAT', 'PERCENT', 'TIERED')),
+    CONSTRAINT ck_fee_event CHECK (charge_event IN (
+        'ACCOUNT_OPEN', 'ACCOUNT_CLOSE', 'MONTHLY_MAINTENANCE',
+        'INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'ATM_WITHDRAWAL', 'STATEMENT_REQUEST')),
+    CONSTRAINT ck_fee_shape CHECK (
+           (fee_type = 'FLAT'    AND amount  IS NOT NULL AND percent IS NULL)
+        OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)
+        OR (fee_type = 'TIERED')),
+    CONSTRAINT ck_fee_bounds CHECK (min_amount IS NULL OR max_amount IS NULL OR max_amount >= min_amount),
+    CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from)
+);
+COMMENT ON CONSTRAINT ck_fee_shape ON product_fees IS
+    'FLAT dùng amount, PERCENT dùng percent — không cho điền cả hai rồi cãi nhau cái nào thắng';
+
+CREATE TABLE product_limits (
+    id             BIGSERIAL     PRIMARY KEY,
+    product_id     BIGINT        NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    limit_code     VARCHAR(30)   NOT NULL,
+    scope          VARCHAR(20)   NOT NULL,
+    channel        VARCHAR(20)   NOT NULL DEFAULT 'ANY',
+    max_amount     NUMERIC(19,4),
+    max_count      INT,
+    currency       CHAR(3)       NOT NULL DEFAULT 'VND',
+    effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
+    CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
+    CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
+    CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
+    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from)
+);
+COMMENT ON TABLE product_limits IS
+    'Khuôn hạn mức theo sản phẩm. Mức đã dùng thực tế nằm ở core_banking.transfer_limit_usage';
+
+CREATE TABLE product_eligibility_rules (
+    id         BIGSERIAL    PRIMARY KEY,
+    product_id BIGINT       NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    rule_type  VARCHAR(30)  NOT NULL,
+    operator   VARCHAR(10)  NOT NULL,
+    rule_value VARCHAR(100) NOT NULL,
+    CONSTRAINT ck_rule_type     CHECK (rule_type IN ('MIN_AGE', 'MAX_AGE', 'MIN_KYC_LEVEL', 'CUSTOMER_TYPE', 'MAX_RISK_RATING')),
+    CONSTRAINT ck_rule_operator CHECK (operator IN ('EQ', 'NEQ', 'GTE', 'LTE', 'IN')),
+    CONSTRAINT uq_rule UNIQUE (product_id, rule_type)
+);
+
+-- CẦU NỐI QUAN TRỌNG NHẤT giữa product và sổ cái: sản phẩm nào thì gốc hạch
+-- toán vào GL nào, lãi phải trả vào GL nào, phí thu vào GL nào.
+-- Không có bảng này thì mã GL bị hardcode trong code — lỗi kinh điển của
+-- core banking tự viết, và là thứ khiến việc thêm sản phẩm mới phải sửa code.
+CREATE TABLE product_gl_mappings (
+    id         BIGSERIAL   PRIMARY KEY,
+    product_id BIGINT      NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    purpose    VARCHAR(30) NOT NULL,
+    gl_code    VARCHAR(20) NOT NULL,
+    CONSTRAINT ck_glmap_purpose CHECK (purpose IN ('PRINCIPAL', 'INTEREST_PAYABLE', 'INTEREST_EXPENSE', 'FEE_INCOME')),
+    CONSTRAINT uq_glmap UNIQUE (product_id, purpose)
+);
+COMMENT ON COLUMN product_gl_mappings.gl_code IS
+    'Tham chiếu MỀM sang core_banking.gl_accounts.gl_code — không FK xuyên schema';
+
+CREATE TABLE outbox (
+    id             BIGSERIAL    PRIMARY KEY,
+    aggregate_type VARCHAR(50)  NOT NULL,
+    aggregate_id   VARCHAR(100) NOT NULL,
+    event_type     VARCHAR(100) NOT NULL,
+    payload        JSONB        NOT NULL,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    published_at   TIMESTAMPTZ
+);
+COMMENT ON TABLE outbox IS
+    'Phát product.activated.v1 / product.retired.v1 để service khác vô hiệu cache catalog. Độc lập với outbox của customer và core_banking';
+
+CREATE INDEX idx_products_status      ON products (status) WHERE status = 'ACTIVE';
+CREATE INDEX idx_rates_product        ON product_interest_rates (product_id, effective_from DESC);
+CREATE INDEX idx_fees_product         ON product_fees (product_id, charge_event);
+CREATE INDEX idx_limits_product       ON product_limits (product_id, scope, channel);
+CREATE INDEX idx_rules_product        ON product_eligibility_rules (product_id);
+CREATE INDEX idx_glmap_product        ON product_gl_mappings (product_id);
+CREATE INDEX idx_prod_outbox_unpub    ON outbox (created_at) WHERE published_at IS NULL;
+
+RESET ROLE;
+SET search_path = public;
+
+-- <<< HẾT KHỐI [4]
