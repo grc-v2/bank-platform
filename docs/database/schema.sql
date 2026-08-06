@@ -269,3 +269,192 @@ RESET ROLE;
 SET search_path = public;
 
 -- <<< HẾT KHỐI [6]
+
+-- ---------------------------------------------------------------------
+-- [3] SCHEMA customer — CIF (Customer Information File).
+--     Khách hàng KHÁC tài khoản đăng nhập, và KHÁC tài khoản ngân hàng.
+--     Ba khái niệm, ba schema.
+-- ---------------------------------------------------------------------
+SET ROLE customer_svc;
+SET search_path = customer;
+
+CREATE TABLE customers (
+    id              BIGSERIAL   PRIMARY KEY,
+    customer_number VARCHAR(20) NOT NULL,
+    user_id         BIGINT,
+    customer_type   VARCHAR(20) NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    kyc_level       SMALLINT    NOT NULL DEFAULT 0,
+    risk_rating     VARCHAR(10),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_customers_number    UNIQUE (customer_number),
+    CONSTRAINT ck_customers_type      CHECK (customer_type IN ('INDIVIDUAL', 'ORGANIZATION')),
+    CONSTRAINT ck_customers_status    CHECK (status IN ('DRAFT', 'PENDING_KYC', 'ACTIVE', 'SUSPENDED', 'CLOSED')),
+    CONSTRAINT ck_customers_kyc_level CHECK (kyc_level BETWEEN 0 AND 3),
+    CONSTRAINT ck_customers_risk      CHECK (risk_rating IS NULL OR risk_rating IN ('LOW', 'MEDIUM', 'HIGH'))
+);
+COMMENT ON COLUMN customers.customer_number IS
+    'Số CIF hiển thị cho người dùng. Tách khỏi id để đổi quy tắc đánh số mà không đụng khóa ngoại';
+COMMENT ON COLUMN customers.user_id IS
+    'Tham chiếu MỀM sang auth.users. NULL hợp lệ: khách hàng mở tại quầy chưa có tài khoản online';
+COMMENT ON COLUMN customers.kyc_level IS
+    '0 = chưa KYC. Mức càng cao hạn mức giao dịch càng lớn — quy tắc nằm ở product.product_eligibility_rules';
+
+-- Mô hình PARTY: bảng chung + bảng chi tiết theo loại. Thay cho một bảng 40 cột
+-- mà nửa số cột luôn NULL tùy loại khách hàng.
+CREATE TABLE individual_details (
+    customer_id    BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    first_name     VARCHAR(100) NOT NULL,
+    last_name      VARCHAR(100) NOT NULL,
+    date_of_birth  DATE         NOT NULL,
+    gender         VARCHAR(10),
+    nationality    CHAR(2)      NOT NULL DEFAULT 'VN',
+    occupation     VARCHAR(100),
+    marital_status VARCHAR(20),
+    CONSTRAINT ck_individual_gender  CHECK (gender IS NULL OR gender IN ('MALE', 'FEMALE', 'OTHER')),
+    CONSTRAINT ck_individual_marital CHECK (marital_status IS NULL OR marital_status IN ('SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED')),
+    CONSTRAINT ck_individual_dob     CHECK (date_of_birth < CURRENT_DATE)
+);
+
+CREATE TABLE organization_details (
+    customer_id        BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    legal_name         VARCHAR(200) NOT NULL,
+    trade_name         VARCHAR(200),
+    tax_code           VARCHAR(20)  NOT NULL,
+    incorporation_date DATE,
+    business_type      VARCHAR(100),
+    CONSTRAINT uq_organization_tax_code UNIQUE (tax_code)
+);
+
+CREATE TABLE customer_identifications (
+    id           BIGSERIAL    PRIMARY KEY,
+    customer_id  BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    id_type      VARCHAR(30)  NOT NULL,
+    id_number    VARCHAR(50)  NOT NULL,
+    issued_date  DATE,
+    issued_place VARCHAR(100),
+    expiry_date  DATE,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_ident_type   CHECK (id_type IN ('NATIONAL_ID', 'PASSPORT', 'DRIVER_LICENSE', 'BUSINESS_LICENSE')),
+    CONSTRAINT ck_ident_expiry CHECK (expiry_date IS NULL OR issued_date IS NULL OR expiry_date > issued_date),
+    CONSTRAINT uq_ident UNIQUE (id_type, id_number)
+);
+COMMENT ON CONSTRAINT uq_ident ON customer_identifications IS
+    'Một số CMND/hộ chiếu không thể thuộc hai người — ràng buộc chống trùng danh tính';
+
+-- valid_from/valid_to: địa chỉ là dữ liệu CÓ LỊCH SỬ, không phải cột ghi đè.
+-- Sao kê in ra phải mang địa chỉ tại thời điểm đó, không phải địa chỉ hôm nay.
+CREATE TABLE customer_addresses (
+    id           BIGSERIAL    PRIMARY KEY,
+    customer_id  BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    address_type VARCHAR(20)  NOT NULL,
+    line1        VARCHAR(200) NOT NULL,
+    line2        VARCHAR(200),
+    ward         VARCHAR(100),
+    district     VARCHAR(100),
+    province     VARCHAR(100),
+    country_code CHAR(2)      NOT NULL DEFAULT 'VN',
+    is_primary   BOOLEAN      NOT NULL DEFAULT FALSE,
+    valid_from   DATE         NOT NULL DEFAULT CURRENT_DATE,
+    valid_to     DATE,
+    CONSTRAINT ck_address_type  CHECK (address_type IN ('PERMANENT', 'RESIDENTIAL', 'MAILING', 'BUSINESS')),
+    CONSTRAINT ck_address_range CHECK (valid_to IS NULL OR valid_to > valid_from)
+);
+
+CREATE TABLE customer_contacts (
+    id            BIGSERIAL    PRIMARY KEY,
+    customer_id   BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    contact_type  VARCHAR(20)  NOT NULL,
+    contact_value VARCHAR(200) NOT NULL,
+    is_primary    BOOLEAN      NOT NULL DEFAULT FALSE,
+    verified_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_contact_type CHECK (contact_type IN ('EMAIL', 'MOBILE', 'PHONE')),
+    CONSTRAINT uq_contact UNIQUE (customer_id, contact_type, contact_value)
+);
+COMMENT ON COLUMN customer_contacts.verified_at IS
+    'NULL = chưa xác minh. Gửi OTP tới số/email chưa xác minh là một lỗ hổng, không phải tiện ích';
+
+-- KYC là STATE MACHINE có người duyệt và có HẠN. Hết hạn thì phải làm lại,
+-- không phải "đã duyệt một lần là xong đời".
+CREATE TABLE kyc_verifications (
+    id            BIGSERIAL    PRIMARY KEY,
+    customer_id   BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    level         SMALLINT     NOT NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    method        VARCHAR(20)  NOT NULL,
+    submitted_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    decided_at    TIMESTAMPTZ,
+    decided_by    BIGINT,
+    reject_reason VARCHAR(500),
+    expires_at    TIMESTAMPTZ,
+    CONSTRAINT ck_kyc_status  CHECK (status IN ('PENDING', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'EXPIRED')),
+    CONSTRAINT ck_kyc_method  CHECK (method IN ('MANUAL', 'EKYC')),
+    CONSTRAINT ck_kyc_level   CHECK (level BETWEEN 1 AND 3),
+    CONSTRAINT ck_kyc_decided CHECK (
+        status NOT IN ('APPROVED', 'REJECTED') OR decided_at IS NOT NULL),
+    CONSTRAINT ck_kyc_reject  CHECK (
+        status <> 'REJECTED' OR reject_reason IS NOT NULL)
+);
+COMMENT ON COLUMN kyc_verifications.decided_by IS
+    'Tham chiếu MỀM sang auth.users — ai duyệt hồ sơ này';
+
+CREATE TABLE kyc_documents (
+    id                  BIGSERIAL    PRIMARY KEY,
+    kyc_verification_id BIGINT       NOT NULL REFERENCES kyc_verifications (id) ON DELETE CASCADE,
+    doc_type            VARCHAR(50)  NOT NULL,
+    storage_key         VARCHAR(500) NOT NULL,
+    checksum            VARCHAR(64)  NOT NULL,
+    uploaded_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+COMMENT ON COLUMN kyc_documents.storage_key IS
+    'Khóa trên object storage. Ảnh giấy tờ KHÔNG nằm trong DB';
+COMMENT ON COLUMN kyc_documents.checksum IS
+    'SHA-256 của file: phát hiện file bị thay sau khi đã duyệt';
+
+-- Append-only: risk rating đổi theo thời gian và phải giải trình được
+-- "tại thời điểm mở tài khoản, khách này được đánh giá thế nào".
+CREATE TABLE customer_risk_assessments (
+    id          BIGSERIAL   PRIMARY KEY,
+    customer_id BIGINT      NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    rating      VARCHAR(10) NOT NULL,
+    score       INT         NOT NULL,
+    reason      JSONB,
+    assessed_by BIGINT,
+    assessed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_risk_rating CHECK (rating IN ('LOW', 'MEDIUM', 'HIGH')),
+    CONSTRAINT ck_risk_score  CHECK (score BETWEEN 0 AND 100)
+);
+
+-- Transactional Outbox: event ghi CÙNG transaction với nghiệp vụ; một publisher
+-- tách rời poll rồi đẩy sang Kafka. Đây là lời giải cho bài dual-write DB<->Kafka.
+CREATE TABLE outbox (
+    id             BIGSERIAL    PRIMARY KEY,
+    aggregate_type VARCHAR(50)  NOT NULL,
+    aggregate_id   VARCHAR(100) NOT NULL,
+    event_type     VARCHAR(100) NOT NULL,
+    payload        JSONB        NOT NULL,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    published_at   TIMESTAMPTZ
+);
+COMMENT ON TABLE outbox IS
+    'Phát customer.kyc.approved.v1, customer.status.changed.v1. Độc lập hoàn toàn với bảng outbox của product và core_banking';
+COMMENT ON COLUMN outbox.payload IS
+    'Payload TỰ ĐỦ (event-carried state): consumer không gọi ngược lại hỏi thêm';
+
+CREATE INDEX idx_customers_user      ON customers (user_id);
+CREATE INDEX idx_customers_status    ON customers (status);
+CREATE INDEX idx_ident_customer      ON customer_identifications (customer_id);
+CREATE INDEX idx_address_customer    ON customer_addresses (customer_id);
+CREATE INDEX idx_contact_customer    ON customer_contacts (customer_id);
+CREATE INDEX idx_kyc_customer        ON kyc_verifications (customer_id, submitted_at DESC);
+CREATE INDEX idx_kyc_open            ON kyc_verifications (submitted_at) WHERE status IN ('PENDING', 'IN_REVIEW');
+CREATE INDEX idx_kycdoc_verification ON kyc_documents (kyc_verification_id);
+CREATE INDEX idx_risk_customer       ON customer_risk_assessments (customer_id, assessed_at DESC);
+CREATE INDEX idx_cust_outbox_unpub   ON outbox (created_at) WHERE published_at IS NULL;
+
+RESET ROLE;
+SET search_path = public;
+
+-- <<< HẾT KHỐI [3]
