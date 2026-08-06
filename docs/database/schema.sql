@@ -737,9 +737,10 @@ CREATE TABLE accounts (
     CONSTRAINT ck_accounts_status    CHECK (status IN ('PENDING', 'ACTIVE', 'DORMANT', 'FROZEN', 'CLOSED')),
     CONSTRAINT ck_accounts_hold      CHECK (hold_amount >= 0),
     CONSTRAINT ck_accounts_overdraft CHECK (overdraft_limit >= 0),
-    -- Viết bằng biểu thức GỐC chứ không tham chiếu cột available_balance:
-    -- Postgres hạn chế dùng cột GENERATED trong ràng buộc, còn biểu thức gốc
-    -- thì luôn hợp lệ và cho ra đúng cùng một ý nghĩa.
+    -- Viết bằng biểu thức GỐC chứ không tham chiếu cột available_balance.
+    -- (Postgres CHO PHÉP CHECK tham chiếu cột GENERATED STORED — đã kiểm chứng.)
+    -- Lý do là tính độc lập: ràng buộc đọc được mà không cần biết
+    -- available_balance được định nghĩa thế nào, và không phụ thuộc thứ tự tính cột.
     CONSTRAINT ck_accounts_available CHECK (ledger_balance - hold_amount >= -overdraft_limit),
     CONSTRAINT ck_accounts_closed    CHECK (status <> 'CLOSED' OR closed_at IS NOT NULL)
 );
@@ -790,7 +791,11 @@ CREATE TABLE account_holds (
     CONSTRAINT ck_hold_amount   CHECK (amount > 0),
     CONSTRAINT ck_hold_reason   CHECK (reason IN ('TRANSFER', 'CARD_AUTH', 'LEGAL', 'FEE')),
     CONSTRAINT ck_hold_status   CHECK (status IN ('ACTIVE', 'RELEASED', 'CAPTURED', 'EXPIRED')),
-    CONSTRAINT ck_hold_released CHECK (status = 'ACTIVE' OR released_at IS NOT NULL)
+    CONSTRAINT ck_hold_released CHECK (status = 'ACTIVE' OR released_at IS NOT NULL),
+    -- Chỉ phong toả theo lệnh cơ quan (LEGAL) mới được vô hạn. Mọi hold còn lại
+    -- BẮT BUỘC có hạn — không có expires_at thì job quét (đi qua idx_holds_expiry)
+    -- không nhìn thấy nó, và tiền của khách bị treo vĩnh viễn không đường về.
+    CONSTRAINT ck_hold_expiry   CHECK (reason = 'LEGAL' OR expires_at IS NOT NULL)
 );
 COMMENT ON COLUMN account_holds.status IS
     'CAPTURED = đã chuyển thành bút toán thật. RELEASED = nhả không hạch toán. EXPIRED = quá hạn, job quét nhả';
