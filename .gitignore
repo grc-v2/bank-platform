@@ -5,3 +5,6 @@ target/
 .env
 .env.*
 !.env.sample
+
+# Scratch của subagent-driven-development — không bao giờ commit
+.superpowers/
