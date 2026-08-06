@@ -992,6 +992,8 @@ INSERT INTO customer.customer_identifications (customer_id, id_type, id_number)
 
 Expected: FAIL với `duplicate key value violates unique constraint "uq_ident"`.
 
+**Bẫy:** nhiều câu lệnh ngăn cách bằng dấu `;` trong **một** `psql -c` đi qua simple query protocol và thành **một transaction ngầm** — câu cuối fail sẽ rollback cả hai câu INSERT trước đó. Step 4b cần các dòng đó tồn tại, nên hãy chạy từng câu bằng một `-c` riêng (mỗi lệnh tự commit), hoặc chấp nhận rằng phải insert lại trước khi sang Step 4b.
+
 - [ ] **Step 4b: Kiểm chứng ba ràng buộc nghiệp vụ vừa thêm**
 
 Mô hình disjoint subtype — khách hàng cá nhân không thể có hồ sơ tổ chức:
