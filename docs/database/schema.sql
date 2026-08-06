@@ -103,3 +103,65 @@ ALTER USER noti_svc     SET search_path = notification;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
 -- <<< HẾT KHỐI [1]
+
+-- ---------------------------------------------------------------------
+-- [2] SCHEMA auth — CHỈ biết danh tính. Không biết gì về tài khoản ngân hàng.
+--     Các schema khác trỏ VÀO auth.users; auth không trỏ ra ngoài.
+-- ---------------------------------------------------------------------
+SET ROLE auth_svc;
+SET search_path = auth;
+
+CREATE TABLE users (
+    id            BIGSERIAL    PRIMARY KEY,
+    username      VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(100) NOT NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
+);
+COMMENT ON COLUMN users.password_hash IS
+    'BCrypt cho ra chuỗi 60 ký tự; để 100 phòng khi đổi sang argon2 (dài hơn)';
+
+-- Bảng nối thay vì cột role: một người kiêm TELLER + ADMIN là chuyện bình thường.
+CREATE TABLE user_roles (
+    user_id BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    role    VARCHAR(20) NOT NULL,
+    PRIMARY KEY (user_id, role),
+    CONSTRAINT ck_user_roles_role CHECK (
+        role IN ('CUSTOMER', 'TELLER', 'CSO', 'RISK_OFFICER', 'ADMIN', 'SYSTEM'))
+);
+
+-- Access token ngắn hạn stateless; khả năng THU HỒI đặt ở refresh token.
+-- Khóa một user = revoke mọi refresh token của họ.
+CREATE TABLE refresh_tokens (
+    id         BIGSERIAL   PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON COLUMN refresh_tokens.token_hash IS
+    'Lưu HASH chứ không lưu token thô: lộ DB không đồng nghĩa lộ phiên đăng nhập';
+
+-- Append-only. Cố ý KHÔNG FK sang users để giữ được cả lần đăng nhập
+-- bằng username không tồn tại — đó chính là dữ liệu để phát hiện dò tài khoản.
+CREATE TABLE login_audit (
+    id         BIGSERIAL    PRIMARY KEY,
+    username   VARCHAR(100) NOT NULL,
+    user_id    BIGINT,
+    success    BOOLEAN      NOT NULL,
+    ip         INET,
+    user_agent VARCHAR(500),
+    at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_refresh_user   ON refresh_tokens (user_id);
+CREATE INDEX idx_refresh_active ON refresh_tokens (expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX idx_login_user_at  ON login_audit (username, at DESC);
+
+RESET ROLE;
+SET search_path = public;
+
+-- <<< HẾT KHỐI [2]
