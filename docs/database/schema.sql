@@ -872,7 +872,7 @@ COMMENT ON COLUMN journal_lines.account_id IS
 COMMENT ON COLUMN journal_lines.amount IS
     'LUÔN DƯƠNG. Nợ hay Có do cột direction quyết định, không dùng dấu âm — số âm trong sổ cái là nguồn gốc của những đêm mất ngủ';
 COMMENT ON CONSTRAINT uq_journal_line ON journal_lines IS
-    'Postgres bắt UNIQUE/PK trên bảng partition PHẢI chứa cột partition, nên có created_at ở đây. Vẫn đủ mạnh: now() trả thời điểm BẮT ĐẦU transaction và không đổi trong transaction, nên mọi dòng của một bút toán có created_at giống hệt nhau';
+    'Postgres bắt UNIQUE/PK trên bảng partition PHẢI chứa cột partition, nên có created_at ở đây. ĐẢM BẢO NÀY CHỈ TRONG PHẠM VI MỘT TRANSACTION: now() không đổi suốt transaction nên mọi dòng của một bút toán có created_at giống hệt nhau, và line_no trùng bị chặn. Transaction KHÁC insert lại line_no cũ sẽ có created_at khác và LỌT — chặn chuyện đó là việc của trg_journal_lines_immutable, không phải của ràng buộc này';
 
 -- Partition theo tháng. Sinh sẵn ba tháng để hiểu cơ chế; sinh tự động về sau
 -- là việc của job hoặc pg_partman. DEFAULT hứng dữ liệu ngoài khoảng để INSERT
@@ -906,9 +906,10 @@ CREATE INDEX idx_lines_gl      ON journal_lines (gl_code, created_at DESC);
 CREATE FUNCTION core_banking.assert_journal_balanced() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_lines      INT;
-    v_net        NUMERIC(19,4);
-    v_currencies INT;
+    v_lines        INT;
+    v_net          NUMERIC(19,4);
+    v_currencies   INT;
+    v_non_postable INT;
 BEGIN
     SELECT COUNT(*),
            COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END), 0),
@@ -932,6 +933,22 @@ BEGIN
             NEW.entry_reference, v_net;
     END IF;
 
+    -- Không được hạch toán thẳng vào tài khoản GL TỔNG HỢP (is_postable = FALSE).
+    -- Bút toán kiểu đó vẫn cân, nên nếu không chặn ở đây thì sai chỉ lộ ra ở khâu
+    -- đối chiếu — lúc đó đã lẫn vào hàng nghìn bút toán đúng. FK chỉ kiểm gl_code
+    -- có tồn tại, không kiểm nó có được phép hạch toán hay không.
+    SELECT COUNT(*)
+      INTO v_non_postable
+      FROM core_banking.journal_lines l
+      JOIN core_banking.gl_accounts  g ON g.gl_code = l.gl_code
+     WHERE l.journal_entry_id = NEW.id
+       AND NOT g.is_postable;
+
+    IF v_non_postable > 0 THEN
+        RAISE EXCEPTION 'Bút toán % có % dòng hạch toán vào GL tổng hợp (is_postable = FALSE)',
+            NEW.entry_reference, v_non_postable;
+    END IF;
+
     RETURN NULL;
 END;
 $$;
@@ -940,6 +957,38 @@ CREATE CONSTRAINT TRIGGER trg_journal_balanced
     AFTER INSERT ON journal_entries
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION core_banking.assert_journal_balanced();
+
+-- ---------------------------------------------------------------------
+-- APPEND-ONLY, ÉP BẰNG DB CHỨ KHÔNG CHỈ BẰNG LỜI
+--
+-- Nguyên tắc số 5 ở đầu file nói sổ cái không UPDATE, không DELETE. Cho tới
+-- đây đó mới chỉ là một câu văn: trg_journal_balanced chỉ chạy khi INSERT vào
+-- journal_entries, nên một UPDATE lên journal_lines làm lệch bút toán đã cân
+-- sẽ đi lọt hoàn toàn và không gì phát hiện được.
+--
+-- Và không thể thay bằng REVOKE: core_svc SỞ HỮU các bảng này, mà chủ sở hữu
+-- đi xuyên qua mọi GRANT. Chỉ trigger mới chặn được.
+--
+-- Còn hai đường vòng mà trigger không với tới: TRUNCATE và DROP TABLE. Cả hai
+-- đều cần quyền chủ sở hữu và đều là hành động có chủ ý, không phải tai nạn của
+-- một câu UPDATE viết vội — chấp nhận được ở tầng này.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION core_banking.reject_ledger_mutation() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION
+        'Sổ cái là APPEND-ONLY: % lên %.% bị từ chối. Sai thì ghi bút toán ĐẢO (transaction_type = ''REVERSAL'', reversal_of_entry_id trỏ về bản gốc)',
+        TG_OP, TG_TABLE_SCHEMA, TG_TABLE_NAME;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_entries_immutable
+    BEFORE UPDATE OR DELETE ON journal_entries
+    FOR EACH ROW EXECUTE FUNCTION core_banking.reject_ledger_mutation();
+
+CREATE TRIGGER trg_journal_lines_immutable
+    BEFORE UPDATE OR DELETE ON journal_lines
+    FOR EACH ROW EXECUTE FUNCTION core_banking.reject_ledger_mutation();
 
 -- Chốt số dư cuối ngày. Hai công dụng: sao kê không phải quét lại sổ cái từ đầu,
 -- và job đối chiếu có mốc để so accounts.ledger_balance với tổng bút toán.
