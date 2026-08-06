@@ -167,3 +167,105 @@ RESET ROLE;
 SET search_path = public;
 
 -- <<< HẾT KHỐI [2]
+
+-- ---------------------------------------------------------------------
+-- [6] SCHEMA notification — service này CHỈ NGHE event.
+--     Mọi dữ liệu cần thiết phải nằm trong payload của event (event-carried
+--     state): consumer không gọi ngược lại hỏi thêm.
+--
+--     Ghi chú vị trí: khối này nằm trước [3][4][5] trong file. Không sao —
+--     notification không FK sang schema nào nên thứ tự tạo không ràng buộc.
+-- ---------------------------------------------------------------------
+SET ROLE noti_svc;
+SET search_path = notification;
+
+-- Xương sống của idempotent consumer. "Không báo hai lần" là em ruột của
+-- "không trừ tiền hai lần". INSERT vào bảng này phải nằm CÙNG transaction với
+-- việc tạo notification; trùng event_id nghĩa là đã xử lý -> bỏ qua message.
+-- Đây là chỗ at-least-once của Kafka được thuần hóa.
+CREATE TABLE processed_events (
+    event_id     VARCHAR(64) PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Nội dung thông báo tách khỏi việc gửi: đổi câu chữ không cần deploy lại code.
+-- version + active để sửa template mà vẫn tra được thông báo cũ đã gửi bằng bản nào.
+CREATE TABLE notification_templates (
+    id            BIGSERIAL    PRIMARY KEY,
+    template_code VARCHAR(50)  NOT NULL,
+    channel       VARCHAR(20)  NOT NULL,
+    locale        VARCHAR(10)  NOT NULL DEFAULT 'vi-VN',
+    subject       VARCHAR(200),
+    body_template TEXT         NOT NULL,
+    version       INT          NOT NULL DEFAULT 1,
+    active        BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_templates_channel CHECK (channel IN ('TELEGRAM', 'EMAIL', 'WEBHOOK')),
+    CONSTRAINT uq_templates UNIQUE (template_code, channel, locale, version)
+);
+
+CREATE TABLE notifications (
+    id            BIGSERIAL   PRIMARY KEY,
+    user_id       BIGINT      NOT NULL,
+    event_type    VARCHAR(50) NOT NULL,
+    channel       VARCHAR(20) NOT NULL,
+    template_code VARCHAR(50),
+    payload       JSONB       NOT NULL,
+    status        VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_notifications_channel CHECK (channel IN ('TELEGRAM', 'EMAIL', 'WEBHOOK')),
+    CONSTRAINT ck_notifications_status  CHECK (status IN ('PENDING', 'SENT', 'FAILED'))
+);
+COMMENT ON COLUMN notifications.user_id IS
+    'Tham chiếu MỀM sang auth.users — không FK xuyên schema';
+COMMENT ON COLUMN notifications.payload IS
+    'Mỗi loại thông báo một hình dạng dữ liệu — một trong số ít chỗ JSONB thực sự đúng';
+
+-- Tách attempts khỏi notifications: một thông báo nhiều lần thử, và lịch sử
+-- retry đọc được chính là nguyên liệu cho dashboard tỉ lệ fail theo kênh.
+CREATE TABLE delivery_attempts (
+    id              BIGSERIAL     PRIMARY KEY,
+    notification_id BIGINT        NOT NULL REFERENCES notifications (id) ON DELETE CASCADE,
+    attempt_no      INT           NOT NULL,
+    status          VARCHAR(20)   NOT NULL,
+    error           VARCHAR(1000),
+    at              TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT ck_attempts_status CHECK (status IN ('SUCCESS', 'FAILED')),
+    CONSTRAINT ck_attempts_no     CHECK (attempt_no > 0),
+    CONSTRAINT uq_attempts UNIQUE (notification_id, attempt_no)
+);
+
+-- URL do người dùng nhập = bề mặt SSRF chính của service này.
+-- secret dùng ký HMAC payload để endpoint nhận xác minh được nguồn.
+CREATE TABLE webhook_endpoints (
+    id              BIGSERIAL     PRIMARY KEY,
+    user_id         BIGINT        NOT NULL,
+    url             VARCHAR(2048) NOT NULL,
+    secret          VARCHAR(64)   NOT NULL,
+    active          BOOLEAN       NOT NULL DEFAULT TRUE,
+    last_status     INT,
+    last_checked_at TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_webhook UNIQUE (user_id, url)
+);
+
+-- Opt-out theo từng loại event và từng kênh. Vắng dòng = mặc định BẬT.
+CREATE TABLE user_notification_preferences (
+    user_id    BIGINT      NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    channel    VARCHAR(20) NOT NULL,
+    enabled    BOOLEAN     NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, event_type, channel),
+    CONSTRAINT ck_prefs_channel CHECK (channel IN ('TELEGRAM', 'EMAIL', 'WEBHOOK'))
+);
+
+CREATE INDEX idx_noti_user_at  ON notifications (user_id, created_at DESC);
+CREATE INDEX idx_noti_pending  ON notifications (created_at) WHERE status = 'PENDING';
+CREATE INDEX idx_attempts_noti ON delivery_attempts (notification_id);
+CREATE INDEX idx_webhook_user  ON webhook_endpoints (user_id) WHERE active;
+
+RESET ROLE;
+SET search_path = public;
+
+-- <<< HẾT KHỐI [6]
