@@ -600,7 +600,7 @@ CREATE TABLE product_limits (
     CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
     CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
     CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
-    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from),
+    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, channel, effective_from),
     -- Cùng lý do như ex_fee_overlap: hai hạn mức cùng mã không được phủ nhau.
     -- channel nằm trong khoá vì cùng một limit_code có thể khác nhau theo kênh.
     CONSTRAINT ex_limit_overlap EXCLUDE USING gist (
