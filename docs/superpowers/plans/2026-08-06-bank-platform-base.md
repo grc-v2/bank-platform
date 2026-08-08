@@ -4415,20 +4415,33 @@ Khác với 5 service kia, gateway **không có `ERROR-CODES.md`** — nó khôn
 - [ ] **Step 1: Liệt kê các bản `spring-cloud-dependencies` mới nhất**
 
 ```bash
-curl -s "https://search.maven.org/solrsearch/select?q=g:org.springframework.cloud+AND+a:spring-cloud-dependencies&core=gav&rows=30&wt=json" \
-  | python3 -c "import json,sys; [print(d['v']) for d in json.load(sys.stdin)['response']['docs']]"
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/maven-metadata.xml" \
+  | grep -oE "<latest>[^<]*</latest>|<release>[^<]*</release>"
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/maven-metadata.xml" \
+  | grep -oE "<version>202[5-9][^<]*</version>" | tail -12
 ```
 
 Ghi lại danh sách. Nếu lệnh thất bại vì không có mạng, bỏ qua sang Step 2b.
+
+**Dùng `maven-metadata.xml`, ĐỪNG dùng API solr của search.maven.org.** Bản plan trước gọi solr với `rows=30`: nó trả về danh sách không sắp theo thời gian và cắt ngắn, cho ra `2025.0.0` như thể là bản mới nhất trong khi `2025.1.2` đã có. Hai train đó khác nhau ở đúng chỗ quan trọng nhất của task này — `2025.0.0` bám Spring Boot 3.5.0, `2025.1.2` bám Boot 4.0.7. Tin vào solr là báo BLOCKED nhầm. `maven-metadata.xml` có `<latest>`/`<release>` tường minh, đó mới là nguồn sự thật.
 
 - [ ] **Step 2a: Tìm bản có `spring-boot.version` là 4.1.x**
 
 Với từng version ứng viên `<V>` (mới nhất trước), kiểm tra POM của nó:
 
 ```bash
-V=2026.0.0   # thay bằng version thật từ Step 1
+V=2025.1.2   # thay bằng version thật từ Step 1
 curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/${V}/spring-cloud-dependencies-${V}.pom" \
-  | grep -iE "spring-boot.version|<name>"
+  | grep -oE "<spring-boot.version>[^<]*</spring-boot.version>|<spring-cloud-gateway.version>[^<]*</spring-cloud-gateway.version>"
+```
+
+Không thấy `spring-boot.version` trong POM tổng hợp thì lần lên chuỗi parent — vài train để nó ở `spring-cloud-build-dependencies` chứ không khai tại chỗ:
+
+```bash
+P=$(curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/${V}/spring-cloud-dependencies-${V}.pom" \
+     | sed -n '/<parent>/,/<\/parent>/p' | grep -oE "<version>[^<]*</version>" | head -1 | sed 's/<[^>]*>//g')
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-build-dependencies/${P}/spring-cloud-build-dependencies-${P}.pom" \
+  | grep -oE "<spring-boot.version>[^<]*</spring-boot.version>"
 ```
 
 Ghi lại kết quả. Có ba khả năng:
@@ -4521,8 +4534,19 @@ Thay `<SPRING_CLOUD_VERSION>` bằng version xác minh được ở Step 2a:
   </description>
 
   <properties>
-    <!-- Version này đã được xác minh khai spring-boot.version 4.1.x. Đổi Spring Boot
-         thì phải kiểm lại: Spring Cloud đi theo release train riêng, bám sát Boot. -->
+    <!--
+      Version này phải được xác minh ở Step 2a, đừng chép mù. Tính tới lúc viết,
+      train GA mới nhất là 2025.1.2, khai spring-boot.version 4.0.7 và quản lý
+      spring-cloud-gateway 5.0.2.
+
+      Repo này chạy Boot 4.1.0 — LỆCH MỘT MINOR so với 4.0.7 mà train bám vào.
+      Chấp nhận có ý thức: cùng dòng major, và BOM của Spring Cloud chỉ ghim
+      version của các artifact spring-cloud, còn version Boot do
+      spring-boot-starter-parent ở POM gốc quyết định (nó đứng gần hơn trong
+      chuỗi phân giải). Nếu build hoặc khởi động lỗi vì lệch này, ghi lại lỗi
+      THẬT rồi báo BLOCKED — đừng tự hạ Boot xuống 4.0.x, đó là quyết định
+      ảnh hưởng cả sáu service chứ không riêng gateway.
+    -->
     <spring-cloud.version>SPRING_CLOUD_VERSION</spring-cloud.version>
   </properties>
 
