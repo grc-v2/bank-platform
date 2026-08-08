@@ -3546,7 +3546,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `services/core-banking-service/pom.xml`, `README.md`, `ERROR-CODES.md`, `Dockerfile`
 - Create: `services/core-banking-service/src/main/java/io/bankplatform/corebanking/CoreBankingApplication.java`
-- Create: 18 thư mục rỗng dưới `io/bankplatform/corebanking/` (danh sách ở Step 2)
+- Create: 24 thư mục lá rỗng dưới `io/bankplatform/corebanking/` (danh sách ở Step 2 là nguồn sự thật; `mkdir -p` tạo thêm 11 thư mục cha, tổng 35)
 - Create: `src/main/resources/{application.yml,application-local.yml,db/migration/.gitkeep}`
 - Create: `src/test/java/io/bankplatform/corebanking/{domain,application,api}/.gitkeep`, `src/test/resources/application-test.yml`
 - Modify: `pom.xml`
@@ -3599,10 +3599,17 @@ mkdir -p services/core-banking-service/src/test/resources
 
 ```bash
 cd /Users/tanvx/Dev/bank-platform
-find services/core-banking-service/src/main/java -type d | sed 's|.*corebanking/||' | grep -v corebanking | sort
+B=services/core-banking-service/src/main/java/io/bankplatform/corebanking
+echo "thư mục lá: $(find $B -name .gitkeep | wc -l | tr -d ' ')"
+echo "tổng thư mục (kể cả corebanking): $(find $B -type d | wc -l | tr -d ' ')"
+find $B -type d | sed "s|^$B/*||" | grep -v '^$' | sort
 ```
 
-Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/account`, `application/account/command`, … `config`.
+Expected: `thư mục lá: 24` và `tổng thư mục (kể cả corebanking): 36` — tức 24 lá trong vòng lặp Step 2, cộng 11 thư mục cha do `mkdir -p` tự tạo (`api`, `application`, `application/{account,ledger,transfer}`, `domain`, `domain/{account,ledger,transfer}`, `infrastructure`, `infrastructure/persistence`), cộng chính `corebanking`. Danh sách in ra bắt đầu bằng `api`, `api/dto`, `application`, `application/account`, `application/account/command`, … và kết thúc ở `infrastructure/persistence/transfer`.
+
+**Vòng lặp ở Step 2 là nguồn sự thật, không phải con số ở đây.** Nếu số đếm lệch, sửa cây cho khớp danh sách Step 2 — tuyệt đối không xoá thư mục để ép cho vừa một con số. Hình dạng ba aggregate (`account`, `ledger`, `transfer`) × ba loại (`model`, `rule`, `event`) là chính cái thiết kế mà README của service này giải thích.
+
+Neo `find` vào thẳng `corebanking` chứ đừng vào `src/main/java`: đường dẫn service là `core-banking-service` có gạch nối, nên `grep -v corebanking` không lọc được ba dòng cha `src/main/java`, `.../io`, `.../io/bankplatform` và số đếm sẽ dôi ra 3.
 
 - [ ] **Step 4: Viết `services/core-banking-service/pom.xml`**
 
