@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.bankplatform</groupId>
+    <artifactId>bank-platform</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>gateway-service</artifactId>
+  <name>bank-platform :: gateway-service</name>
+  <description>
+    Cổng vào duy nhất cho frontend. CHỈ định tuyến — không nghiệp vụ, không DB,
+    không javalibs. Mỗi service phía sau vẫn tự kiểm JWT.
+  </description>
+
+  <properties>
+    <!--
+      Version này phải được xác minh ở Step 2a, đừng chép mù. Tính tới lúc viết,
+      train GA mới nhất là 2025.1.2, khai spring-boot.version 4.0.7 và quản lý
+      spring-cloud-gateway 5.0.2.
+
+      Repo này chạy Boot 4.1.0 — LỆCH MỘT MINOR so với 4.0.7 mà train bám vào.
+      Chấp nhận có ý thức: cùng dòng major, và BOM của Spring Cloud chỉ ghim
+      version của các artifact spring-cloud, còn version Boot do
+      spring-boot-starter-parent ở POM gốc quyết định (nó đứng gần hơn trong
+      chuỗi phân giải). Nếu build hoặc khởi động lỗi vì lệch này, ghi lại lỗi
+      THẬT rồi báo BLOCKED — đừng tự hạ Boot xuống 4.0.x, đó là quyết định
+      ảnh hưởng cả sáu service chứ không riêng gateway.
+    -->
+    <spring-cloud.version>2025.1.2</spring-cloud.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Bản servlet (WebMVC), không phải reactive: đồng bộ với mọi service khác
+         trong repo, đỡ phải học hai mô hình lập trình cùng lúc. -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway-server-webmvc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,5 @@
+# Profile local: mọi service chạy trên máy này.
+#   mvn -pl services/gateway-service spring-boot:run -Dspring-boot.run.profiles=local
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
