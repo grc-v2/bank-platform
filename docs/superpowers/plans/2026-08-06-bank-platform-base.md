@@ -4708,12 +4708,15 @@ failsafe-reports/
 # Scratch của subagent-driven-development — không bao giờ commit
 .superpowers/
 
+# Cấu hình skill cục bộ của người dùng — không thuộc về repo
+.claude
+
 # Linh tinh
 *.orig
 *.rej
 ```
 
-**Dòng `.superpowers/` là bắt buộc, đừng bỏ.** Step 15 của task này chạy `git add -A`; thiếu dòng đó thì toàn bộ ledger và báo cáo của quy trình review bị commit vào repo. Nó đã có sẵn trong `.gitignore` trước khi task này chạy — việc của Step 2 là **mở rộng** file, không phải ghi đè mất dòng này.
+**Hai dòng `.superpowers/` và `.claude` là bắt buộc, đừng bỏ.** Step 15 của task này chạy `git add -A`. Thiếu `.superpowers/` thì toàn bộ ledger và báo cáo của quy trình review bị commit vào repo; thiếu `.claude` thì thư mục cấu hình skill cục bộ của người dùng (2.2 MB, 101 file) bị kéo vào. **Cả hai dòng đã có sẵn trong `.gitignore` trước khi task này chạy** — việc của Step 2 là **mở rộng** file, tuyệt đối không ghi đè làm mất chúng. Kiểm lại bằng `git check-ignore -v .claude .superpowers` sau khi sửa.
 
 - [ ] **Step 3: Viết `.editorconfig`**
 

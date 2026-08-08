@@ -8,3 +8,4 @@ target/
 
 # Scratch của subagent-driven-development — không bao giờ commit
 .superpowers/
+.claude
