@@ -31,6 +31,7 @@
     Danh sách này lớn dần qua từng task; hiện chưa có module nào.
   -->
   <modules>
+    <module>bank-common</module>
   </modules>
 
   <dependencyManagement>
