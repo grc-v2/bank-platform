@@ -4614,29 +4614,41 @@ spring:
 
   cloud:
     gateway:
-      # Route khai bằng cấu hình, không bằng code — thêm service mới là thêm
-      # vài dòng yaml, không phải deploy lại logic.
-      routes:
-        - id: auth
-          uri: ${AUTH_URI:http://localhost:8081}
-          predicates:
-            - Path=/api/auth/**
-        - id: customer
-          uri: ${CUSTOMER_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/customers/**
-        - id: product
-          uri: ${PRODUCT_URI:http://localhost:8083}
-          predicates:
-            - Path=/api/products/**
-        - id: core-banking
-          uri: ${CORE_URI:http://localhost:8084}
-          predicates:
-            - Path=/api/accounts/**,/api/transfers/**
-        - id: notification
-          uri: ${NOTIFICATION_URI:http://localhost:8085}
-          predicates:
-            - Path=/api/notifications/**
+      # PREFIX PHẢI LÀ spring.cloud.gateway.server.webmvc, KHÔNG PHẢI
+      # spring.cloud.gateway. Cái sau là của bản REACTIVE. Step 4 chọn bản
+      # servlet (spring-cloud-starter-gateway-server-webmvc), mà lớp cấu hình
+      # của nó là GatewayMvcProperties với
+      # @ConfigurationProperties("spring.cloud.gateway.server.webmvc").
+      #
+      # Sai prefix hỏng theo kiểu IM LẶNG, giống hệt vụ spring-boot-kafka ở
+      # Task 13: app khởi động bình thường, /actuator/health trả UP, không một
+      # dòng cảnh báo nào — nhưng KHÔNG route nào được nạp và mọi đường dẫn
+      # đều 404. Spring Boot không kêu ca về khoá cấu hình nó không biết.
+      server:
+        webmvc:
+          # Route khai bằng cấu hình, không bằng code — thêm service mới là thêm
+          # vài dòng yaml, không phải deploy lại logic.
+          routes:
+            - id: auth
+              uri: ${AUTH_URI:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
+            - id: customer
+              uri: ${CUSTOMER_URI:http://localhost:8082}
+              predicates:
+                - Path=/api/customers/**
+            - id: product
+              uri: ${PRODUCT_URI:http://localhost:8083}
+              predicates:
+                - Path=/api/products/**
+            - id: core-banking
+              uri: ${CORE_URI:http://localhost:8084}
+              predicates:
+                - Path=/api/accounts/**,/api/transfers/**
+            - id: notification
+              uri: ${NOTIFICATION_URI:http://localhost:8085}
+              predicates:
+                - Path=/api/notifications/**
 
 server:
   port: 8080
@@ -4710,8 +4722,17 @@ Spring Cloud đi theo release train riêng, bám sát version Spring Boot.
 
 ```bash
 mvn -pl services/gateway-service -am spring-boot:run -Dspring-boot.run.profiles=local
-curl -s http://localhost:8080/actuator/gateway/routes | head -c 400
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/foo   # có route -> thử proxy thật
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/khong-co-route  # 404 trơn
 ```
+
+**Không có `/actuator/gateway/routes`.** Endpoint đó thuộc bản *reactive*
+(`GatewayControllerEndpoint` nằm trong `spring-cloud-gateway-server`); jar servlet
+`spring-cloud-gateway-server-webmvc` không chứa một lớp `@Endpoint` nào. Cách kiểm
+route ở đây là so sánh hành vi: đường dẫn CÓ route sẽ cố mở kết nối tới backend
+(502/500 khi backend chưa chạy — chính nó chứng minh route đã khớp), còn đường dẫn
+không có route trả 404 trơn. Bật `logging.level.org.springframework.cloud.gateway=DEBUG`
+thì `RouterFunctionHolderFactory` in ra danh sách route lúc khởi động.
 ```
 
 Nếu đi theo đường lui Step 2b, thay hai mục đầu bằng ghi chú: module Java đang rỗng có chủ đích, `compose.yaml` dùng nginx tại cổng 8080, và điều kiện để quay lại Spring Cloud Gateway.
@@ -4729,11 +4750,18 @@ cd /Users/tanvx/Dev/bank-platform && mvn -B -P'!with-libs' clean install
 mvn -pl services/gateway-service spring-boot:run -Dspring-boot.run.profiles=local > /tmp/gw-run.log 2>&1 &
 sleep 40
 curl -s http://localhost:8080/actuator/health; echo
-curl -s http://localhost:8080/actuator/gateway/routes | head -c 400; echo
+for p in /api/auth/foo /api/customers/foo /api/products/foo /api/accounts/foo /api/transfers/foo /api/notifications/foo /khong-co-route; do
+  printf "%-26s %s\n" "$p" "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080$p)"
+done
+grep -i "route" /tmp/gw-run.log | head -10
 pkill -f "spring-boot:run" || true
 ```
 
-Expected: `{"status":"UP"...}` và JSON liệt kê 5 route. Nếu đi đường lui Step 2b: `docker compose up -d gateway && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/` trả về mã HTTP (502 khi auth-service chưa chạy là bình thường — nó chứng minh nginx đã định tuyến).
+Expected: `{"status":"UP"...}`; sáu đường dẫn `/api/**` KHÔNG trả 404 (backend chưa chạy nên 500/502 — chính nó chứng minh route đã khớp và gateway đã cố proxy), còn `/khong-co-route` trả đúng 404.
+
+**Đừng chờ `/actuator/gateway/routes`** — endpoint đó không tồn tại trong bản servlet (xem ghi chú ở Step 9). Muốn thấy danh sách route lúc khởi động thì thêm `logging.level.org.springframework.cloud.gateway: DEBUG` vào `application-local.yml`.
+
+Nếu đi đường lui Step 2b: `docker compose up -d gateway && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/` trả về mã HTTP (502 khi auth-service chưa chạy là bình thường — nó chứng minh nginx đã định tuyến).
 
 - [ ] **Step 12: Commit**
 
