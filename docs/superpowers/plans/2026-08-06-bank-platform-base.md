@@ -2733,6 +2733,17 @@ mkdir -p services/auth-service/src/test/resources
       <artifactId>javalibs-cache-spring-boot-starter</artifactId>
     </dependency>
 
+    <!--
+      BẮT BUỘC dù spring.flyway.enabled=false. javalibs-persistence-spring-boot-
+      autoconfigure để spring-boot-flyway ở scope optional, còn Spring Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào chính module đó. Thiếu nó, service chết
+      lúc khởi động với NoClassDefFoundError — cờ enabled không cứu được, vì lớp
+      thiếu là lúc nạp cấu hình chứ không phải lúc chạy migration.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -3106,6 +3117,17 @@ done
       <artifactId>javalibs-search-spring-boot-starter</artifactId>
     </dependency>
 
+    <!--
+      BẮT BUỘC dù spring.flyway.enabled=false. javalibs-persistence-spring-boot-
+      autoconfigure để spring-boot-flyway ở scope optional, còn Spring Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào chính module đó. Thiếu nó, service chết
+      lúc khởi động với NoClassDefFoundError — cờ enabled không cứu được, vì lớp
+      thiếu là lúc nạp cấu hình chứ không phải lúc chạy migration.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -3613,6 +3635,17 @@ Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/a
       <artifactId>javalibs-search-spring-boot-starter</artifactId>
     </dependency>
 
+    <!--
+      BẮT BUỘC dù spring.flyway.enabled=false. javalibs-persistence-spring-boot-
+      autoconfigure để spring-boot-flyway ở scope optional, còn Spring Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào chính module đó. Thiếu nó, service chết
+      lúc khởi động với NoClassDefFoundError — cờ enabled không cứu được, vì lớp
+      thiếu là lúc nạp cấu hình chứ không phải lúc chạy migration.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -3992,6 +4025,17 @@ mkdir -p services/customer-service/src/test/resources
       phải bảo trì mà không bảo vệ gì.
     -->
 
+    <!--
+      BẮT BUỘC dù spring.flyway.enabled=false. javalibs-persistence-spring-boot-
+      autoconfigure để spring-boot-flyway ở scope optional, còn Spring Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào chính module đó. Thiếu nó, service chết
+      lúc khởi động với NoClassDefFoundError — cờ enabled không cứu được, vì lớp
+      thiếu là lúc nạp cấu hình chứ không phải lúc chạy migration.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
