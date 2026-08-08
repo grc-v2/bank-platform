@@ -54,19 +54,25 @@
     </dependency>
 
     <!--
-      javalibs-persistence-spring-boot-autoconfigure khai spring-boot-flyway
-      là optional (Spring Boot 4.1 tách FlywayConfigurationCustomizer ra module
-      riêng này). Optional thì không kéo transitively — thiếu nó,
-      JavalibsFlywayAutoConfiguration nạp lớp thất bại với NoClassDefFoundError
-      ngay lúc Spring soi điều kiện @ConditionalOnMissingBean, bất kể
-      spring.flyway.enabled=false hay chưa. Khai tường minh ở đây để service
-      khởi động được; version do BOM spring-boot-dependencies (từ parent) quản.
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
     -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-flyway</artifactId>
     </dependency>
-
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
