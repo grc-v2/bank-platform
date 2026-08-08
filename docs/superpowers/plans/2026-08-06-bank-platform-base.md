@@ -4356,15 +4356,19 @@ curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-d
 
 Ghi lại kết quả. Có ba khả năng:
 
+**Người dùng đã quyết định: dùng Spring Cloud Gateway, không dùng nginx.** Verify ở đây là để chọn đúng *version*, không phải để chọn *có dùng hay không*.
+
 | Kết quả | Hành động |
 |---|---|
 | Tìm được bản khai `spring-boot.version` **4.1.x** | Đi tiếp Step 3 với version đó |
-| Chỉ có bản cho Boot 4.0.x | Thử Step 3 với bản đó; nếu build hoặc khởi động lỗi thì sang Step 2b |
-| Không có bản nào cho Boot 4.x | Sang Step 2b |
+| Chỉ có bản cho Boot 4.0.x | Thử Step 3 với bản đó — Boot 4.0 và 4.1 cùng dòng major, khả năng chạy được cao. Nếu build hoặc khởi động lỗi, ghi lại lỗi thật rồi báo **BLOCKED** |
+| Không có bản nào cho Boot 4.x | Báo **BLOCKED** ngay, kèm danh sách version đã thử và `spring-boot.version` của từng bản |
 
-- [ ] **Step 2b: Đường lui — nginx thay gateway**
+**Không tự ý chuyển sang nginx.** Đó là quyết định của con người, không phải của người triển khai. Nếu Spring Cloud Gateway không dùng được với Boot 4.1, việc cần làm là dừng lại và báo — vì lựa chọn thay thế có thể là hạ Spring Boot, đợi release train mới, hoặc chấp nhận nginx, và cả ba đều nằm ngoài thẩm quyền của task này.
 
-Chỉ làm khi Step 2a không tìm được bản dùng được. Tạo `docker/nginx/nginx.conf`:
+- [ ] **Step 2b: (dự phòng, CHỈ chạy khi người dùng đổi quyết định) — nginx thay gateway**
+
+Giữ lại làm tài liệu tham chiếu. **Không chạy step này trừ khi được chỉ định rõ ràng.** Tạo `docker/nginx/nginx.conf`:
 
 ```nginx
 # Đường lui khi chưa có Spring Cloud Gateway tương thích Spring Boot 4.1.
