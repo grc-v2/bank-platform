@@ -29,7 +29,7 @@ Một người có thể là customer mà chưa có user (mở tại quầy), c�
 1. **Không hai khách hàng cùng một giấy tờ.** DB có `uq_ident`, nhưng domain phải báo lỗi nghiệp vụ tử tế trước khi chạm DB.
 2. **KYC `APPROVED`/`REJECTED` bắt buộc có `decided_at`; `REJECTED` bắt buộc có lý do.**
 3. **`customers.kyc_level` chỉ tăng khi có một `kyc_verifications` APPROVED ở mức đó và chưa hết hạn.**
-4. **`INDIVIDUAL` có `individual_details`, `ORGANIZATION` có `organization_details`** — không có cái ngược lại. DB không ràng buộc được điều này (nó ở hai bảng), domain phải giữ.
+4. **`INDIVIDUAL` có `individual_details`, `ORGANIZATION` có `organization_details`** — không có cái ngược lại. Phần *loại trừ* DB đã tự chặn: `customers` có `uq_customers_id_type UNIQUE (id, customer_type)`, hai bảng chi tiết FK theo cặp `(customer_id, customer_type)` và `CHECK` ghim `customer_type` bằng đúng loại của mình — mẫu disjoint subtype, nên không thể gắn hồ sơ tổ chức cho khách hàng cá nhân. Phần domain phải giữ là phần *tồn tại*: DB không ép một khách hàng `ACTIVE` phải có dòng chi tiết nào cả.
 
 ## Event phát ra
 
