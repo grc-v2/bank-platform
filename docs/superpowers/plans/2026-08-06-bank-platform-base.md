@@ -1188,7 +1188,11 @@ CREATE TABLE product_limits (
     CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
     CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
     CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
-    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from),
+    -- channel PHẢI nằm trong khoá: cùng một limit_code hoàn toàn có thể có mức khác
+    -- nhau theo kênh (chuyển qua mobile hạn mức thấp hơn qua quầy). Thiếu channel ở
+    -- đây thì uq_limit mâu thuẫn với ex_limit_overlap ngay bên dưới, và seed hai hạn
+    -- mức TRF_PER_TXN khác kênh sẽ không insert nổi.
+    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, channel, effective_from),
     -- Cùng lý do như ex_fee_overlap: hai hạn mức cùng mã không được phủ nhau.
     -- channel nằm trong khoá vì cùng một limit_code có thể khác nhau theo kênh.
     CONSTRAINT ex_limit_overlap EXCLUDE USING gist (
@@ -2360,7 +2364,9 @@ INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months,
 SELECT id, 0, NULL, NULL, 0.001000 FROM products WHERE product_code = 'CA_STANDARD';
 
 INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months, annual_rate)
-SELECT id, 0, 100000000, NULL, 0.005000 FROM products WHERE product_code = 'SA_STANDARD'
+-- NULL::INT ở nhánh ĐẦU của chuỗi UNION là bắt buộc: Postgres phân giải kiểu theo
+-- cặp, một cột toàn NULL không có kiểu sẽ thành text rồi không ép ngầm sang INT được.
+SELECT id, 0, 100000000, NULL::INT, 0.005000 FROM products WHERE product_code = 'SA_STANDARD'
 UNION ALL
 SELECT id, 100000000, NULL, NULL, 0.008000 FROM products WHERE product_code = 'SA_STANDARD';
 
@@ -2369,7 +2375,7 @@ SELECT id, 0, NULL, 12, 0.055000 FROM products WHERE product_code = 'TD_12M';
 
 -- Biểu phí của tài khoản thanh toán.
 INSERT INTO product_fees (product_id, fee_code, fee_type, amount, percent, min_amount, max_amount, charge_event)
-SELECT id, 'MAINT_MONTHLY', 'FLAT',    11000, NULL,    NULL,    NULL, 'MONTHLY_MAINTENANCE' FROM products WHERE product_code = 'CA_STANDARD'
+SELECT id, 'MAINT_MONTHLY', 'FLAT',    11000, NULL::NUMERIC, NULL::NUMERIC, NULL::NUMERIC, 'MONTHLY_MAINTENANCE' FROM products WHERE product_code = 'CA_STANDARD'
 UNION ALL
 SELECT id, 'TRF_INTERNAL',  'FLAT',        0, NULL,    NULL,    NULL, 'INTERNAL_TRANSFER'   FROM products WHERE product_code = 'CA_STANDARD'
 UNION ALL
@@ -2473,7 +2479,7 @@ Expected: `0`.
 cd /Users/tanvx/Dev/bank-platform && docker compose logs postgres 2>&1 | grep -iE "error|fatal|warning" | grep -v "listening on" || echo "SẠCH"
 ```
 
-Expected: `SẠCH`.
+Expected: chỉ còn hai cảnh báo hạ tầng của Postgres lúc khởi tạo (locale và trust-auth) — chúng xuất hiện trước khi `schema.sql` chạy và có ở mọi container. Điều cần chứng minh là **không có dòng `ERROR` hay `FATAL` nào**. Literal `SẠCH` không đạt được trong môi trường này.
 
 - [ ] **Step 6: Commit**
 
