@@ -36,6 +36,7 @@
     <module>services/product-service</module>
     <module>services/notification-service</module>
     <module>services/core-banking-service</module>
+    <module>services/customer-service</module>
   </modules>
 
   <dependencyManagement>
