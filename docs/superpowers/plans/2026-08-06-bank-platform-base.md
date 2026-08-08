@@ -3194,6 +3194,30 @@ Giống Step 3 với ba thay đổi: `<artifactId>notification-service</artifact
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-resilience-spring-boot-starter</artifactId>
     </dependency>
+
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Một event không phát mà không ai báo lỗi là kiểu hỏng tệ nhất trên nền tảng
+      ngân hàng — tiền đã ghi sổ nhưng phía nghe không bao giờ biết.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
 ```
 
 - [ ] **Step 5: Viết hai main class**
@@ -3642,6 +3666,29 @@ Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/a
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này outbox mang bút toán đã ghi sổ: publisher chết câm nghĩa là
+      sổ cái đúng nhưng cả hệ còn lại không bao giờ biết giao dịch đã xảy ra.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
     <!-- Circuit breaker khi gọi ngân hàng đối tác: chặn cascading failure -->
     <dependency>
       <groupId>io.javalibs</groupId>
@@ -4040,6 +4087,29 @@ mkdir -p services/customer-service/src/test/resources
     <dependency>
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
+    </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này, customer.kyc.approved.v1 không phát nghĩa là khách đã được
+      duyệt KYC nhưng không service nào mở được tài khoản cho họ.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
     </dependency>
     <!-- Lọc động danh sách khách hàng -->
     <dependency>
