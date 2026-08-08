@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bank}
+    username: ${DB_USER:auth_svc}
+    password: ${DB_PASSWORD:auth_dev}
+
+  jpa:
+    hibernate:
+      # Schema do docs/database/schema.sql dựng. Hibernate chỉ được KIỂM TRA,
+      # không bao giờ được sinh hay sửa DDL.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: auth
+
+  flyway:
+    # TẮT có chủ đích. Schema đã do docs/database/schema.sql dựng qua
+    # docker-entrypoint-initdb.d, còn db/migration/ thì đang rỗng. Bật Flyway
+    # lúc này trên một schema đã có bảng mà chưa có bảng lịch sử sẽ làm service
+    # chết ngay khi khởi động.
+    # Bật lên khi cắt migration đầu tiên từ schema.sql (xem khối [8] của file đó).
+    enabled: false
+    schemas: auth
+    default-schema: auth
+    clean-disabled: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: 8081
+
+javalibs:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

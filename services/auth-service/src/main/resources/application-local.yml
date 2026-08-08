@@ -1,0 +1,15 @@
+# Profile local: chạy với hạ tầng của compose.yaml.
+#   mvn -pl services/auth-service spring-boot:run -Dspring-boot.run.profiles=local
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bank
+
+javalibs:
+  security:
+    jwt:
+      # Secret dev, chỉ dùng ở máy local. Production bơm qua biến môi trường.
+      secret: local-dev-only-secret-please-change-me-at-least-32-bytes
+
+logging:
+  level:
+    io.bankplatform: DEBUG

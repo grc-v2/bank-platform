@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.bankplatform</groupId>
+    <artifactId>bank-platform</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>auth-service</artifactId>
+  <name>bank-platform :: auth-service</name>
+  <description>Định danh và phát hành token. Không biết gì về tài khoản ngân hàng.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.bankplatform</groupId>
+      <artifactId>bank-common</artifactId>
+    </dependency>
+
+    <!-- Bộ nền javalibs: mọi service nghiệp vụ đều có đúng năm starter này -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-web-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-security-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-openapi-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-observability-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-persistence-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- Riêng auth: phát hành/rotate token, và blacklist revoke qua Redis -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-security-issuer</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-cache-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!--
+      javalibs-persistence-spring-boot-autoconfigure khai spring-boot-flyway
+      là optional (Spring Boot 4.1 tách FlywayConfigurationCustomizer ra module
+      riêng này). Optional thì không kéo transitively — thiếu nó,
+      JavalibsFlywayAutoConfiguration nạp lớp thất bại với NoClassDefFoundError
+      ngay lúc Spring soi điều kiện @ConditionalOnMissingBean, bất kể
+      spring.flyway.enabled=false hay chưa. Khai tường minh ở đây để service
+      khởi động được; version do BOM spring-boot-dependencies (từ parent) quản.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
