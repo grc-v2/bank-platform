@@ -1201,3 +1201,130 @@ RESET ROLE;
 SET search_path = public;
 
 -- <<< HẾT KHỐI [5c] — kết thúc schema core_banking
+
+-- =====================================================================
+-- [7] SEED DATA
+--     Chỉ dữ liệu THAM CHIẾU: hệ thống tài khoản và danh mục sản phẩm.
+--     KHÔNG seed khách hàng, KHÔNG seed tài khoản — hai thứ đó là dữ liệu
+--     nghiệp vụ, phải đi qua đúng luồng mở hồ sơ và mở tài khoản.
+-- =====================================================================
+
+SET ROLE core_svc;
+SET search_path = core_banking;
+
+-- Chart of accounts tối thiểu. Quy ước đánh số:
+--   1xxx TÀI SẢN · 2xxx NỢ PHẢI TRẢ · 3xxx VỐN · 4xxx THU NHẬP · 5xxx CHI PHÍ
+-- Tiền gửi của khách hàng là NỢ PHẢI TRẢ của ngân hàng — đây là chỗ người mới
+-- hay nhầm nhất: khách gửi tiền vào thì ngân hàng NỢ khách số tiền đó.
+INSERT INTO gl_accounts (gl_code, name, account_class, normal_balance, is_postable) VALUES
+    ('1010', 'Tiền mặt tại quỹ',                  'ASSET',     'DEBIT',  TRUE),
+    ('1900', 'Tài khoản trung gian thanh toán',   'ASSET',     'DEBIT',  TRUE),
+    ('2010', 'Tiền gửi khách hàng - thanh toán',  'LIABILITY', 'CREDIT', TRUE),
+    ('2020', 'Tiền gửi khách hàng - tiết kiệm',   'LIABILITY', 'CREDIT', TRUE),
+    ('2110', 'Lãi phải trả khách hàng',           'LIABILITY', 'CREDIT', TRUE),
+    ('3010', 'Vốn điều lệ',                       'EQUITY',    'CREDIT', TRUE),
+    ('3020', 'Lợi nhuận giữ lại',                 'EQUITY',    'CREDIT', TRUE),
+    ('4010', 'Thu nhập từ phí dịch vụ',           'INCOME',    'CREDIT', TRUE),
+    ('5010', 'Chi phí lãi tiền gửi',              'EXPENSE',   'DEBIT',  TRUE);
+
+COMMENT ON TABLE gl_accounts IS
+    '1900 là tài khoản trung gian: tiền đã rời tài khoản nguồn nhưng chưa tới đích (chuyển liên ngân hàng đang chờ đối tác). Số dư của nó phải về 0 sau mỗi phiên đối chiếu';
+
+RESET ROLE;
+SET search_path = public;
+
+SET ROLE product_svc;
+SET search_path = product;
+
+INSERT INTO products (product_code, name, category, currency, status, description) VALUES
+    ('CA_STANDARD', 'Tài khoản thanh toán chuẩn',      'CURRENT_ACCOUNT', 'VND', 'ACTIVE', 'Tài khoản dùng hằng ngày, lãi suất không kỳ hạn'),
+    ('SA_STANDARD', 'Tài khoản tiết kiệm không kỳ hạn', 'SAVINGS_ACCOUNT', 'VND', 'ACTIVE', 'Rút bất cứ lúc nào, lãi bậc thang theo số dư'),
+    ('TD_12M',      'Tiền gửi có kỳ hạn 12 tháng',      'TERM_DEPOSIT',    'VND', 'ACTIVE', 'Rút trước hạn hưởng lãi không kỳ hạn');
+
+-- Lãi suất. CA phẳng; SA bậc thang theo số dư; TD theo kỳ hạn.
+INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months, annual_rate)
+SELECT id, 0, NULL, NULL, 0.001000 FROM products WHERE product_code = 'CA_STANDARD';
+
+INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months, annual_rate)
+SELECT id, 0, 100000000, NULL::INT, 0.005000 FROM products WHERE product_code = 'SA_STANDARD'
+UNION ALL
+SELECT id, 100000000, NULL, NULL, 0.008000 FROM products WHERE product_code = 'SA_STANDARD';
+
+INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months, annual_rate)
+SELECT id, 0, NULL, 12, 0.055000 FROM products WHERE product_code = 'TD_12M';
+
+-- Biểu phí của tài khoản thanh toán.
+INSERT INTO product_fees (product_id, fee_code, fee_type, amount, percent, min_amount, max_amount, charge_event)
+SELECT id, 'MAINT_MONTHLY', 'FLAT',    11000, NULL::NUMERIC,    NULL::NUMERIC,    NULL::NUMERIC, 'MONTHLY_MAINTENANCE' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'TRF_INTERNAL',  'FLAT',        0, NULL,    NULL,    NULL, 'INTERNAL_TRANSFER'   FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'TRF_EXTERNAL',  'PERCENT',  NULL, 0.000500, 5500, 1100000, 'EXTERNAL_TRANSFER'  FROM products WHERE product_code = 'CA_STANDARD';
+
+-- Hạn mức chuyển tiền của tài khoản thanh toán.
+INSERT INTO product_limits (product_id, limit_code, scope, channel, max_amount, max_count)
+SELECT id, 'TRF_PER_TXN', 'PER_TRANSACTION', 'ANY',      500000000, NULL FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'TRF_PER_DAY', 'PER_DAY',         'ANY',     1000000000,   20 FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'TRF_PER_TXN', 'PER_TRANSACTION', 'MOBILE',   100000000, NULL FROM products WHERE product_code = 'CA_STANDARD';
+
+-- Điều kiện mở tài khoản.
+INSERT INTO product_eligibility_rules (product_id, rule_type, operator, rule_value)
+SELECT id, 'MIN_AGE',       'GTE', '18' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'MIN_KYC_LEVEL', 'GTE', '1'  FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL
+SELECT id, 'MIN_KYC_LEVEL', 'GTE', '2'  FROM products WHERE product_code = 'TD_12M';
+
+-- CẦU NỐI sang sổ cái: mỗi sản phẩm hạch toán vào GL nào.
+INSERT INTO product_gl_mappings (product_id, purpose, gl_code)
+SELECT id, 'PRINCIPAL',        '2010' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL SELECT id, 'INTEREST_PAYABLE', '2110' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL SELECT id, 'INTEREST_EXPENSE', '5010' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL SELECT id, 'FEE_INCOME',       '4010' FROM products WHERE product_code = 'CA_STANDARD'
+UNION ALL SELECT id, 'PRINCIPAL',        '2020' FROM products WHERE product_code = 'SA_STANDARD'
+UNION ALL SELECT id, 'INTEREST_PAYABLE', '2110' FROM products WHERE product_code = 'SA_STANDARD'
+UNION ALL SELECT id, 'INTEREST_EXPENSE', '5010' FROM products WHERE product_code = 'SA_STANDARD'
+UNION ALL SELECT id, 'FEE_INCOME',       '4010' FROM products WHERE product_code = 'SA_STANDARD'
+UNION ALL SELECT id, 'PRINCIPAL',        '2020' FROM products WHERE product_code = 'TD_12M'
+UNION ALL SELECT id, 'INTEREST_PAYABLE', '2110' FROM products WHERE product_code = 'TD_12M'
+UNION ALL SELECT id, 'INTEREST_EXPENSE', '5010' FROM products WHERE product_code = 'TD_12M'
+UNION ALL SELECT id, 'FEE_INCOME',       '4010' FROM products WHERE product_code = 'TD_12M';
+
+RESET ROLE;
+SET search_path = public;
+
+
+-- =====================================================================
+-- [8] GHI CHÚ VẬN HÀNH
+--
+--  TẠO PARTITION THÁNG MỚI. journal_lines có partition tới hết 2026-10 và một
+--  DEFAULT hứng phần còn lại. DEFAULT là lưới an toàn, không phải chỗ để dữ liệu
+--  ở lâu: nó không được prune nên mọi truy vấn đều phải quét nó.
+--    CREATE TABLE core_banking.journal_lines_2026_11
+--        PARTITION OF core_banking.journal_lines
+--        FOR VALUES FROM ('2026-11-01') TO ('2026-12-01');
+--  Nếu DEFAULT đã có dữ liệu thuộc khoảng đó, lệnh trên sẽ bị từ chối — phải
+--  tách dữ liệu ra trước. Đó là lý do tạo partition TRƯỚC khi cần, bằng job.
+--
+--  XÓA DỮ LIỆU CŨ. DROP một partition tháng = lưu trữ tức thì, thay cho DELETE
+--  hàng triệu dòng. Đây là lợi ích lớn nhất của partition ở bảng sổ cái.
+--
+--  ĐÁNH INDEX THEO BẰNG CHỨNG. Các index trong file này phục vụ những truy vấn
+--  đã biết chắc sẽ có (sao kê theo tài khoản, quét outbox chưa publish, quét
+--  saga treo). Index tiếp theo chỉ thêm sau khi EXPLAIN trên dữ liệu thật cho
+--  thấy cần — index thừa làm chậm mọi lệnh ghi trên bảng nóng.
+--
+--  ĐỐI CHIẾU. Hai phép kiểm phải luôn đúng, chạy định kỳ:
+--    1. Với mỗi bút toán: SUM(DEBIT) = SUM(CREDIT). Trigger đã đảm bảo lúc ghi,
+--       nhưng vẫn nên quét lại để phát hiện can thiệp trực tiếp vào DB.
+--    2. Với mỗi GL: SUM(số dư các accounts trỏ vào gl_code đó) = số dư GL tính
+--       từ journal_lines. Lệch nghĩa là accounts.ledger_balance đã trôi khỏi sổ cái.
+--
+--  KHI BẬT FLYWAY. Cắt phần schema của service từ file này thành
+--  V<yyyyMMddHHmm>__<mô_tả>.sql trong db/migration/, rồi đổi
+--  spring.flyway.enabled thành true. Với database đã có sẵn bảng do file này
+--  tạo, cần thêm spring.flyway.baseline-on-migrate=true cho lần chạy đầu —
+--  hoặc sạch hơn: docker compose down -v rồi để Flyway dựng lại từ đầu.
+-- =====================================================================
