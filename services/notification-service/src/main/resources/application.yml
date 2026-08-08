@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bank}
+    username: ${DB_USER:noti_svc}
+    password: ${DB_PASSWORD:noti_dev}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: notification
+
+  flyway:
+    # TẮT có chủ đích — xem services/auth-service/src/main/resources/application.yml
+    enabled: false
+    schemas: notification
+    default-schema: notification
+    clean-disabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+
+server:
+  port: 8085
+
+javalibs:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

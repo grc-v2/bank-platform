@@ -33,6 +33,8 @@
   <modules>
     <module>bank-common</module>
     <module>services/auth-service</module>
+    <module>services/product-service</module>
+    <module>services/notification-service</module>
   </modules>
 
   <dependencyManagement>
