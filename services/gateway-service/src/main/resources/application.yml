@@ -52,8 +52,20 @@ management:
         # lặng lẽ bỏ qua, nên nó không gây lỗi; nó chỉ làm người đọc tưởng
         # /actuator/gateway/routes dùng được (nó luôn trả 404 — xem README).
         #
-        # Quan trọng hơn là thứ ĐÃ THIẾU: không có metrics,prometheus thì Prometheus
-        # không scrape nổi gateway. Năm service kia đều phơi đúng bốn endpoint dưới
-        # đây, nên để nguyên danh sách cũ nghĩa là thành phần MỌI request đi qua lại
-        # là điểm mù giám sát duy nhất của hệ thống. Giữ khớp với năm service kia.
+        # Quan trọng hơn là thứ ĐÃ THIẾU: thiếu "metrics" thì gateway không phơi
+        # /actuator/metrics, trong khi năm service kia đều phơi — thành phần MỌI
+        # request đi qua lại là điểm mù đo đạc duy nhất. Sau khi sửa,
+        # /actuator/metrics trên gateway trả 200 (đã chạy thật và kiểm).
+        #
+        # ĐỪNG HIỂU NHẦM "prometheus" (đã kiểm, ghi ra để không ai tưởng bở): mục này
+        # HIỆN CHƯA có tác dụng ở BẤT KỲ service nào trong repo. Endpoint
+        # /actuator/prometheus chỉ ra đời khi classpath có một Prometheus registry
+        # (micrometer-registry-prometheus) — mà không service nào có:
+        # javalibs-observability-spring-boot-starter chỉ kéo spring-boot-starter-actuator
+        # + micrometer core + tracing bridge OTel. `dependency:tree` của gateway và của
+        # product đều không có dòng nào khớp "prometheus", và /actuator/prometheus trên
+        # gateway trả 404.
+        # Vẫn giữ "prometheus" ở đây để danh sách khớp năm service kia và để endpoint
+        # tự sống dậy ngay khi ai đó thêm registry. Nhưng muốn Prometheus scrape được
+        # THẬT thì phải thêm registry cho cả sáu service — đó là việc riêng, chưa làm.
         include: health,info,metrics,prometheus
