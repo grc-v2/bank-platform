@@ -80,11 +80,13 @@ Nguồn dữ liệu:
 | `startedAt`, `uptimeSeconds` | `RuntimeMXBean` (start time của JVM) |
 | `dependencies` | Đọc `HealthEndpoint` có sẵn của actuator, trích các component (`db`, `redis`, `kafka`…) — **không tự viết health check**. Component không tồn tại → không đưa vào danh sách. |
 
-**Rủi ro đã biết, xử lý lúc lập plan:** Spring Boot không có health indicator sẵn cho
-Kafka client thường (chỉ có cho Kafka Streams). Nếu xác nhận đúng vậy ở repo này thì
-chọn một trong hai, ưu tiên (a): (a) bảng dependencies của các service dùng Kafka không
-có dòng `kafka` — chấp nhận, ghi chú; (b) viết một `HealthIndicator` nhỏ dùng
-`KafkaAdmin.describeCluster` với timeout ngắn. Không để plan tự bịa lựa chọn thứ ba.
+**Rủi ro đã biết, xử lý lúc lập plan — đã xác minh:** Boot 4.1 KHÔNG có health indicator
+nào cho Kafka, kể cả cho Kafka Streams — đã soát bốn jar lúc lập plan
+(`spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka`,
+`spring-kafka`): không jar nào chứa lớp health Kafka. Đã chọn (a): bảng dependencies của
+các service dùng Kafka không có dòng `kafka` — chấp nhận, ghi chú (xem
+docs/KNOWN-LIMITATIONS.md). Lựa chọn (b) — viết một `HealthIndicator` nhỏ dùng
+`KafkaAdmin.describeCluster` với timeout ngắn — vẫn để ngỏ cho tương lai.
 
 Mỗi service chép riêng record DTO + controller của mình (đúng luật `bank-common` cấm
 REST DTO — quy tắc 3 trong README của nó). Vị trí theo cấu trúc từng service:
