@@ -52,6 +52,7 @@ Redis chỉ có ở **auth** và **product** (hai service duy nhất có `spring
 
 **Files:**
 - Modify: `pom.xml` (root — thêm `<build><pluginManagement>`)
+- Modify: `services/auth-service/pom.xml` (thêm `spring-boot-starter-data-redis` — xem chú thích trước Step 7)
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/config/ServiceInfoProperties.java`
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/web/dto/ServiceInfoResponse.java`
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/web/dto/DependencyStatus.java`
@@ -335,6 +336,24 @@ public class ServiceInfoController {
 }
 ```
 
+**Chú thích bắt buộc trước Step 7 — `spring-boot-starter-data-redis`:** thêm vào `<dependencies>` của `services/auth-service/pom.xml` (cạnh `javalibs-cache-spring-boot-starter`):
+
+```xml
+    <!--
+      javalibs-cache-spring-boot-starter CỐ Ý không kèm spring-boot-starter-data-redis
+      (docs/modules/cache.md: "ứng dụng muốn Redis phải tự thêm"). Thiếu nó thì
+      khối spring.data.redis trong yml là cấu hình TREO: không RedisConnectionFactory,
+      javalibs-cache lặng lẽ rơi về Caffeine, và actuator không có component redis.
+      Cùng họ lỗi im lặng với spring-boot-flyway và spring-boot-kafka của plan trước.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+```
+
+Áp cho auth (task này) và **product (Task 2)** — hai service duy nhất có `spring.data.redis` trong yml. Notification/core-banking/customer KHÔNG thêm.
+
 - [ ] **Step 7: Bật `@ConfigurationPropertiesScan` và cấu hình yml**
 
 `AuthApplication.java` — thêm import và annotation (giữ nguyên phần còn lại):
@@ -424,6 +443,7 @@ Bốn file Java + test của mỗi service **giống hệt Task 1** ngoài các 
 | yml `permit-all` dòng cuối | `- /api/products/info` | `- /api/notifications/info` |
 | test đường gọi + giá trị assert | theo bảng | theo bảng |
 | test dependencies | `db` UP **và** `contains("redis")` (product có redis) | CHỈ `db` UP — notification KHÔNG có redis, thêm `assertThat(dependencyNames(data)).doesNotContain("redis")` |
+| pom service | THÊM `spring-boot-starter-data-redis` + comment y như auth (xem chú thích trước Step 7 của Task 1 — thiếu là assertion redis không bao giờ thoả) | KHÔNG thêm gì vào pom |
 
 Ba lưu ý khi chép mà bảng không nói:
 
