@@ -21,7 +21,9 @@
 --     dự thu lãi hằng ngày không mất số lẻ. currency CHAR(3) theo ISO-4217.
 --
 --  3. MỘT TÀI KHOẢN MỘT LOẠI TIỀN, MỘT BÚT TOÁN CÁC DÒNG CÙNG LOẠI TIỀN.
---     Không có FX trong phạm vi này — trigger cân đối sẽ từ chối bút toán trộn tiền.
+--     Không có FX trong phạm vi này. Trigger cân đối từ chối CẢ HAI vế: bút toán
+--     trộn nhiều loại tiền, VÀ dòng mang loại tiền khác với tài khoản nó hạch toán
+--     vào (vế thứ hai từng thiếu — bút toán USD vào tài khoản VND đi lọt sạch).
 --
 --  4. TIMESTAMPTZ CHO THỜI ĐIỂM, DATE CHO NGÀY NGHIỆP VỤ. value_date quyết định
 --     lãi, booking_date quyết định kỳ sổ — hai thứ khác nhau, đừng trộn.
@@ -102,6 +104,53 @@ ALTER USER noti_svc     SET search_path = notification;
 -- Chặn quyền mặc định trên public để không ai tạo bảng "tạm" ngoài schema của mình.
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
+-- ---------------------------------------------------------------------
+--  updated_at PHẢI DO DATABASE GIỮ
+--
+--  Tám bảng trong file này khai `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+--  DEFAULT chỉ chạy lúc INSERT. Không có gì cập nhật nó thì một cột tên updated_at
+--  thực chất là created_at thứ hai — và nó sai một cách IM LẶNG: không lỗi, không
+--  cảnh báo, chỉ là mọi con số đọc ra từ nó đều sai.
+--
+--  Cột này là HỢP ĐỒNG với phía tiêu thụ dữ liệu, không phải trang trí. CDC, đồng
+--  bộ tăng dần, job đối chiếu đều hỏi "có gì đổi sau mốc X" bằng đúng cột này. Một
+--  hàng bị sửa mà updated_at đứng yên thì không bao giờ lọt vào mẻ đồng bộ, và hai
+--  hệ thống trôi lệch nhau mà không ai nhìn thấy.
+--
+--  ĐẶT Ở DATABASE, KHÔNG Ở JPA @PreUpdate: chưa có entity nào tồn tại, và bất biến
+--  này phải đúng với MỌI thứ ghi vào bảng — batch job, script vá dữ liệu tay, psql
+--  lúc 2 giờ sáng — chứ không riêng đường đi qua Hibernate.
+--
+--  Hàm đặt ở schema public vì năm schema có năm owner khác nhau và không owner nào
+--  tạo được object trong schema của người khác; public là chỗ duy nhất cả năm role
+--  đều USAGE được. Ở trên chỉ REVOKE CREATE trên public chứ không REVOKE USAGE,
+--  nên các role vẫn gọi được hàm này.
+--
+--  HỆ QUẢ CÓ CHỦ ĐÍCH (đã kiểm): trigger GHI ĐÈ cả giá trị mà câu UPDATE tự đặt cho
+--  updated_at. `UPDATE ... SET updated_at = '2020-01-01'` vẫn ra now(). Đó đúng là ý
+--  nghĩa của "database sở hữu cột này" — không ai bịa được thời điểm sửa. Nếu có ngày
+--  cần nạp dữ liệu giữ nguyên updated_at gốc (di trú từ hệ thống cũ), phải DROP
+--  trigger, nạp, rồi tạo lại trong cùng một transaction, và đó là việc có chủ đích
+--  chứ không phải chuyện tình cờ làm được.
+--
+--  Dùng now() (thời điểm BẮT ĐẦU transaction) chứ không clock_timestamp(): mọi hàng
+--  sửa trong cùng một transaction mang đúng một mốc, khớp với DEFAULT now() của
+--  created_at. Phía đọc CDC nhờ đó thấy một transaction là một mốc thời gian.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION public.set_updated_at() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+-- Postgres mặc định đã cấp EXECUTE cho PUBLIC trên function mới. Khai tường minh
+-- để bất biến không phụ thuộc vào một mặc định mà ALTER DEFAULT PRIVILEGES ở môi
+-- trường khác có thể đã đổi.
+GRANT EXECUTE ON FUNCTION public.set_updated_at()
+    TO auth_svc, customer_svc, product_svc, core_svc, noti_svc;
+
 -- <<< HẾT KHỐI [1]
 
 -- ---------------------------------------------------------------------
@@ -162,6 +211,10 @@ CREATE TABLE login_audit (
 CREATE INDEX idx_refresh_user   ON refresh_tokens (user_id);
 CREATE INDEX idx_refresh_active ON refresh_tokens (expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX idx_login_user_at  ON login_audit (username, at DESC);
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
@@ -264,6 +317,10 @@ CREATE INDEX idx_noti_user_at  ON notifications (user_id, created_at DESC);
 CREATE INDEX idx_noti_pending  ON notifications (created_at) WHERE status = 'PENDING';
 CREATE INDEX idx_attempts_noti ON delivery_attempts (notification_id);
 CREATE INDEX idx_webhook_user  ON webhook_endpoints (user_id) WHERE active;
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_prefs_updated_at BEFORE UPDATE ON user_notification_preferences
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
@@ -482,6 +539,10 @@ CREATE INDEX idx_kycdoc_verification ON kyc_documents (kyc_verification_id);
 CREATE INDEX idx_risk_customer       ON customer_risk_assessments (customer_id, assessed_at DESC);
 CREATE INDEX idx_cust_outbox_unpub   ON outbox (created_at) WHERE published_at IS NULL;
 
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 RESET ROLE;
 SET search_path = public;
 
@@ -539,7 +600,28 @@ CREATE TABLE product_interest_rates (
     CONSTRAINT ck_rate_tier   CHECK (tier_to IS NULL OR tier_to > tier_from),
     CONSTRAINT ck_rate_value  CHECK (annual_rate >= 0 AND annual_rate < 1),
     CONSTRAINT ck_rate_term   CHECK (term_months IS NULL OR term_months > 0),
-    CONSTRAINT ck_rate_period CHECK (effective_to IS NULL OR effective_to > effective_from)
+    CONSTRAINT ck_rate_period CHECK (effective_to IS NULL OR effective_to > effective_from),
+    -- Bảng GIÁ TRỊ cuối cùng còn thiếu lưới chống chồng lấn (fees, limits, gl_mappings
+    -- đã có từ đầu) — khối comment mở đầu schema [4] vẫn nói cả bốn bảng đều có, nên
+    -- trước ràng buộc này chính file tự mâu thuẫn với mình. Thiếu nó thì hai dòng cùng
+    -- sản phẩm, cùng bậc, cùng kỳ hạn, cùng ngày hiệu lực nhưng KHÁC lãi suất là hợp lệ
+    -- với DB, và câu "áp lãi suất nào" được trả lời bằng thứ tự hàng trả về — tức là
+    -- không trả lời được.
+    --
+    -- Hai chỗ dễ sập bẫy, cả hai xử lý ngay tại đây:
+    --   1. BẬC cũng là một KHOẢNG. Phải xét chồng lấn trên numrange(tier_from, tier_to)
+    --      chứ không phải '=' trên từng cột; nếu không, bậc 0-100tr và bậc 50-200tr của
+    --      cùng một sản phẩm vẫn lọt qua.
+    --   2. term_months NULL-ABLE, mà 'WITH =' KHÔNG BAO GIỜ khớp NULL với NULL. Để trần
+    --      thì mọi dòng không kỳ hạn — chính là toàn bộ CA và SA — vĩnh viễn không xung
+    --      đột với nhau, đúng những dòng cần bảo vệ nhất lại lọt hết. COALESCE về -1 kéo
+    --      NULL thành giá trị so sánh được; -1 an toàn vì ck_rate_term đã bắt
+    --      term_months > 0 nên không dòng thật nào mang -1.
+    CONSTRAINT ex_rate_overlap EXCLUDE USING gist (
+        product_id                                    WITH =,
+        COALESCE(term_months, -1)                     WITH =,
+        numrange(tier_from, tier_to, '[)')            WITH &&,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON COLUMN product_interest_rates.annual_rate IS
     'Tỉ lệ thập phân: 0.045000 = 4.5%/năm. CHECK < 1 chặn lỗi nhập 4.5 thay vì 0.045';
@@ -573,6 +655,13 @@ CREATE TABLE product_fees (
            (fee_type = 'FLAT'    AND amount  IS NOT NULL AND percent IS NULL)
         OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)),
     CONSTRAINT ck_fee_bounds CHECK (min_amount IS NULL OR max_amount IS NULL OR max_amount >= min_amount),
+    -- Khoảng hiệu lực RỖNG (effective_to = effective_from) phải chặn ở đây, và
+    -- ex_fee_overlap bên dưới KHÔNG gánh thay được: daterange rỗng không '&&' với bất
+    -- kỳ khoảng nào, kể cả chính nó, nên EXCLUDE nhìn dòng đó là hoàn toàn vô hại.
+    -- Thực tế đó là một biểu phí không bao giờ có hiệu lực — phí âm thầm không thu,
+    -- không lỗi, không cảnh báo. Cùng khuôn với ck_products_period / ck_rate_period /
+    -- ck_glmap_period, ba bảng anh em đã có từ đầu.
+    CONSTRAINT ck_fee_period CHECK (effective_to IS NULL OR effective_to > effective_from),
     CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from),
     -- Hai biểu phí cùng fee_code không được PHỦ NHAU về thời gian. UNIQUE trên
     -- effective_from chỉ chặn trùng đúng ngày bắt đầu, không chặn được
@@ -600,6 +689,11 @@ CREATE TABLE product_limits (
     CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
     CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
     CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
+    -- Cùng lý do như ck_fee_period: khoảng rỗng lọt qua EXCLUDE vì daterange rỗng
+    -- không '&&' với gì cả. Ở bảng này hậu quả nặng hơn phí — một hạn mức không bao
+    -- giờ có hiệu lực nghĩa là KHÔNG có hạn mức, tức là chốt chặn số tiền bị mở toang
+    -- mà nhìn vào bảng vẫn thấy có dòng hạn mức nằm đó.
+    CONSTRAINT ck_limit_period  CHECK (effective_to IS NULL OR effective_to > effective_from),
     CONSTRAINT uq_limit UNIQUE (product_id, limit_code, channel, effective_from),
     -- Cùng lý do như ex_fee_overlap: hai hạn mức cùng mã không được phủ nhau.
     -- channel nằm trong khoá vì cùng một limit_code có thể khác nhau theo kênh.
@@ -669,6 +763,10 @@ CREATE INDEX idx_rules_product        ON product_eligibility_rules (product_id);
 CREATE INDEX idx_glmap_product        ON product_gl_mappings (product_id);
 CREATE INDEX idx_prod_outbox_unpub    ON outbox (created_at) WHERE published_at IS NULL;
 
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 RESET ROLE;
 SET search_path = public;
 
@@ -711,7 +809,17 @@ CREATE TABLE gl_accounts (
     -- TÀI SẢN và CHI PHÍ tăng bên NỢ; NỢ PHẢI TRẢ, VỐN và THU NHẬP tăng bên CÓ.
     CONSTRAINT ck_gl_class_normal CHECK (
            (account_class IN ('ASSET', 'EXPENSE')              AND normal_balance = 'DEBIT')
-        OR (account_class IN ('LIABILITY', 'EQUITY', 'INCOME') AND normal_balance = 'CREDIT'))
+        OR (account_class IN ('LIABILITY', 'EQUITY', 'INCOME') AND normal_balance = 'CREDIT')),
+    -- Một tài khoản không thể là cha của chính nó. FK ở trên chỉ bắt parent_gl_code
+    -- phải TỒN TẠI — mà chính nó thì luôn tồn tại, nên
+    -- `UPDATE gl_accounts SET parent_gl_code = '1010' WHERE gl_code = '1010'` đi lọt
+    -- nếu thiếu CHECK này, và mọi phép cộng dồn lên cây tài khoản sẽ lặp vô hạn.
+    --
+    -- PHẠM VI CÓ CHỦ ĐÍCH: chỉ chặn vòng ĐỘ DÀI 1. Vòng dài hơn (A -> B -> A) CỐ Ý
+    -- KHÔNG chặn — bắt nó cần trigger đệ quy chạy trên mỗi lần ghi, và đó là quyết
+    -- định đã cân nhắc rồi bỏ. Hệ quả bắt buộc phải nhớ: mọi lần duyệt cây tài khoản
+    -- về sau PHẢI viết bằng `WITH RECURSIVE ... CYCLE`, đừng giả định cây sạch chu trình.
+    CONSTRAINT ck_gl_parent_not_self CHECK (parent_gl_code IS NULL OR parent_gl_code <> gl_code)
 );
 COMMENT ON COLUMN gl_accounts.is_postable IS
     'FALSE = tài khoản tổng hợp, chỉ để gom số. Hạch toán thẳng vào nó là sai';
@@ -809,6 +917,10 @@ CREATE INDEX idx_holders_customer  ON account_holders (customer_id);
 CREATE INDEX idx_holds_active ON account_holds (account_id) WHERE status = 'ACTIVE';
 CREATE INDEX idx_holds_expiry ON account_holds (expires_at) WHERE status = 'ACTIVE';
 
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_accounts_updated_at BEFORE UPDATE ON accounts
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- <<< HẾT KHỐI [5a]
 
 -- ---------------------------------------------------------------------
@@ -848,6 +960,17 @@ COMMENT ON COLUMN journal_entries.booking_date IS
     'NGÀY HẠCH TOÁN — quyết định bút toán rơi vào kỳ sổ nào';
 COMMENT ON COLUMN journal_entries.reversal_of_entry_id IS
     'Sổ cái APPEND-ONLY: sai thì ghi bút toán đảo trỏ về bản gốc, không bao giờ UPDATE hay DELETE bút toán cũ';
+
+-- MỘT bút toán chỉ được đảo MỘT LẦN. ck_journal_reversal ở trên bắt REVERSAL phải
+-- trỏ về bản gốc, nhưng không nói gì về việc hai bút toán đảo cùng trỏ về một gốc.
+-- Thiếu ràng buộc này thì cả hai đều cân, cả hai đều qua trg_journal_balanced, và
+-- bản gốc bị đảo hai lần — tiền chạy ngược hai lượt, số dư lệch đúng bằng số tiền
+-- gốc, mà sổ cái vẫn "đúng" ở mọi phép kiểm từng-bút-toán.
+-- Partial index (bỏ NULL) chứ không UNIQUE thường: đại đa số bút toán không phải
+-- bút toán đảo, không việc gì phải đánh index cho NULL của chúng.
+-- Đảo một bút toán đảo VẪN được: C đảo B, B đảo A -> hai giá trị khác nhau.
+CREATE UNIQUE INDEX uq_journal_one_reversal
+    ON journal_entries (reversal_of_entry_id) WHERE reversal_of_entry_id IS NOT NULL;
 
 CREATE TABLE journal_lines (
     id               BIGSERIAL,
@@ -898,18 +1021,33 @@ CREATE INDEX idx_lines_gl      ON journal_lines (gl_code, created_at DESC);
 -- Giải pháp: CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED. Nó chạy tại
 -- COMMIT chứ không tại INSERT — đúng lúc mọi dòng đã nằm trong bảng.
 --
--- Trigger đặt trên journal_entries (bảng THƯỜNG) chứ không trên journal_lines
--- (bảng PARTITION) để né các giới hạn của Postgres với trigger trên bảng partition.
--- Hệ quả: một bút toán đã cân rồi mà sau đó có ai chèn thêm dòng ở transaction
--- KHÁC thì trigger không chạy lại. Đó chính là điều nguyên tắc append-only cấm.
+-- Trigger đặt trên journal_entries (bảng THƯỜNG) vì phép cân đối nói về TẬP các
+-- dòng của một bút toán, và chỗ tự nhiên để kiểm tại COMMIT là hàng header.
+--
+-- KHOẢNG HỞ NÓ KHÔNG BỊT: bút toán đã cân, đã commit, rồi một transaction KHÁC chèn
+-- thêm dòng vào chính bút toán ấy. trg_journal_balanced chỉ chạy khi INSERT vào
+-- journal_entries nên không bao giờ chạy lại.
+--
+-- Trước đây chỗ này ghi rằng phải chấp nhận khoảng hở vì "bảng partition không mang
+-- nổi ràng buộc cần thiết". LÝ DO ĐÓ SAI, và đã kiểm lại bằng thực nghiệm trên đúng
+-- Postgres mà repo dùng (17.10):
+--   * trigger FOR EACH ROW trên bảng partition được Postgres nhân xuống MỌI partition
+--     con. pg_get_triggerdef cho thấy trg_journal_lines_immutable nằm trên
+--     journal_lines VÀ cả bốn partition.
+--   * kể cả CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED đặt trên bảng
+--     partition cũng được chấp nhận và cũng nhân xuống đủ bốn partition.
+-- Không có giới hạn nào của Postgres buộc phải bỏ trống chỗ này.
+--
+-- Khoảng hở giờ do trg_journal_lines_same_txn (bên dưới) bịt.
 -- ---------------------------------------------------------------------
 CREATE FUNCTION core_banking.assert_journal_balanced() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_lines        INT;
-    v_net          NUMERIC(19,4);
-    v_currencies   INT;
-    v_non_postable INT;
+    v_lines          INT;
+    v_net            NUMERIC(19,4);
+    v_currencies     INT;
+    v_non_postable   INT;
+    v_wrong_currency INT;
 BEGIN
     SELECT COUNT(*),
            COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END), 0),
@@ -947,6 +1085,28 @@ BEGIN
     IF v_non_postable > 0 THEN
         RAISE EXCEPTION 'Bút toán % có % dòng hạch toán vào GL tổng hợp (is_postable = FALSE)',
             NEW.entry_reference, v_non_postable;
+    END IF;
+
+    -- Nguyên tắc 3 ở đầu file hứa "một tài khoản một loại tiền", nhưng phép kiểm
+    -- COUNT(DISTINCT currency) ở trên CHỈ nhìn trong nội bộ một bút toán: nó bắt được
+    -- bút toán TRỘN tiền, không bắt được bút toán ĐỒNG NHẤT NHƯNG SAI loại tiền. Hai
+    -- dòng USD cân nhau hạch toán vào tài khoản VND đi lọt sạch — rồi
+    -- accounts.ledger_balance cộng thẳng USD vào số dư VND, và không phép đối chiếu
+    -- nào ở [8] phát hiện ra vì bản thân bút toán vẫn cân.
+    --
+    -- Dòng có account_id NULL CỐ Ý không bị kiểm ở đây: theo quyết định DB3 đó là dòng
+    -- chỉ chạm GL nội bộ, không có tài khoản khách hàng nào để đối chiếu. JOIN (không
+    -- phải LEFT JOIN) loại chúng ra một cách tự nhiên — đừng "sửa" thành LEFT JOIN.
+    SELECT COUNT(*)
+      INTO v_wrong_currency
+      FROM core_banking.journal_lines l
+      JOIN core_banking.accounts     a ON a.id = l.account_id
+     WHERE l.journal_entry_id = NEW.id
+       AND a.currency <> l.currency;
+
+    IF v_wrong_currency > 0 THEN
+        RAISE EXCEPTION 'Bút toán % có % dòng lệch loại tiền so với tài khoản được hạch toán',
+            NEW.entry_reference, v_wrong_currency;
     END IF;
 
     RETURN NULL;
@@ -989,6 +1149,58 @@ CREATE TRIGGER trg_journal_entries_immutable
 CREATE TRIGGER trg_journal_lines_immutable
     BEFORE UPDATE OR DELETE ON journal_lines
     FOR EACH ROW EXECUTE FUNCTION core_banking.reject_ledger_mutation();
+
+-- ---------------------------------------------------------------------
+-- KHÔNG CHÈN DÒNG VÀO BÚT TOÁN ĐÃ COMMIT
+--
+-- Bịt nốt khoảng hở của trg_journal_balanced (mô tả ngay trên nó). Một bút toán đã
+-- cân và đã commit thì TẬP DÒNG của nó là bất biến; chèn thêm dòng vào đó là sửa một
+-- bản ghi sổ cái đã chốt. Hai trigger immutable phía trên chỉ chặn UPDATE và DELETE,
+-- nên trước trigger này INSERT là đường vòng duy nhất còn mở — và nó không để lại
+-- dấu vết nào, bút toán vẫn "tồn tại hợp lệ", chỉ là nội dung đã khác lúc chốt.
+--
+-- CƠ CHẾ PHÂN BIỆT: hàng header mang system column xmin = id transaction đã tạo ra
+-- nó. Header insert trong CHÍNH transaction đang chạy thì xmin bằng
+-- pg_current_xact_id(); header đã commit từ trước thì khác. Cast xid8 -> xid dùng
+-- cast dựng sẵn của Postgres (pg_cast có castsource = xid8, casttarget = xid), không
+-- phải mẹo đi vòng qua text.
+--
+-- GIỚI HẠN ĐÃ BIẾT — ghi ra để người sau không mất một buổi chiều: pg_current_xact_id()
+-- trả xid của transaction NGOÀI CÙNG, còn xmin của hàng ghi trong một subtransaction
+-- (SAVEPOINT) là xid của subtransaction đó. Nên nếu header được insert BÊN TRONG một
+-- savepoint đã RELEASE, rồi các dòng mới insert ở mức ngoài, trigger này TỪ CHỐI OAN.
+-- Đã kiểm bằng thực nghiệm: đó là trường hợp oan duy nhất — header ở mức ngoài còn
+-- các dòng nằm trong savepoint thì vẫn chạy đúng.
+--
+-- HỢP ĐỒNG GHI SỔ suy ra từ giới hạn đó: ghi header và các dòng của MỘT bút toán ở
+-- cùng một mức transaction, đừng cắt savepoint vào giữa hai bước. Đánh đổi chấp nhận
+-- được vì ràng buộc này fail TO: sai thì nổ ngay tại INSERT, lộ ra tức thì, thay vì
+-- âm thầm làm hỏng sổ cái như khoảng hở mà nó thay thế.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION core_banking.assert_entry_not_committed() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_ref TEXT;
+BEGIN
+    SELECT e.entry_reference
+      INTO v_ref
+      FROM core_banking.journal_entries e
+     WHERE e.id = NEW.journal_entry_id
+       AND e.xmin <> pg_current_xact_id()::xid;
+
+    IF FOUND THEN
+        RAISE EXCEPTION
+            'Bút toán % đã COMMIT ở transaction trước — không được chèn thêm dòng. Sai thì ghi bút toán ĐẢO (transaction_type = ''REVERSAL''), không vá dòng vào bút toán cũ',
+            v_ref;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_lines_same_txn
+    AFTER INSERT ON journal_lines
+    FOR EACH ROW EXECUTE FUNCTION core_banking.assert_entry_not_committed();
 
 -- Chốt số dư cuối ngày. Hai công dụng: sao kê không phải quét lại sổ cái từ đầu,
 -- và job đối chiếu có mốc để so accounts.ledger_balance với tổng bút toán.
@@ -1196,6 +1408,14 @@ CREATE INDEX idx_fee_pending        ON fee_charges (charged_at) WHERE status = '
 CREATE INDEX idx_core_outbox_unpub  ON outbox (created_at) WHERE published_at IS NULL;
 CREATE INDEX idx_audit_resource     ON audit_log (resource_type, resource_id, at DESC);
 CREATE INDEX idx_audit_actor        ON audit_log (actor_user_id, at DESC);
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ các trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_transfers_updated_at BEFORE UPDATE ON transfers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+CREATE TRIGGER trg_ext_transfers_updated_at BEFORE UPDATE ON external_transfers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+CREATE TRIGGER trg_limit_usage_updated_at BEFORE UPDATE ON transfer_limit_usage
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
