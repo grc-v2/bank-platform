@@ -1247,7 +1247,23 @@ pkill -f "spring-boot:run" || true
 pkill -f "vite" || true
 ```
 
-- [ ] **Step 6: Cập nhật `README.md` gốc** — thêm mục sau (đặt sau mục "Database" hoặc cuối "Bắt đầu"), và nếu README còn câu khẳng định "đúng 6 file `.java`" thì sửa thành "6 main class + code nghiệp vụ tăng dần theo feature":
+- [ ] **Step 6a: Thêm mục Kafka vào `docs/KNOWN-LIMITATIONS.md`** — README ở Step 6b trỏ tới file này cho chuyện Kafka, nên mục phải TỒN TẠI trước khi con trỏ được ship. Thêm vào cuối phần `## Service`:
+
+```markdown
+### Bảng dependencies của API `/info` không có dòng `kafka`
+
+Boot 4.1 không có health indicator nào cho Kafka — đã soát cả
+`spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka`
+lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka, kể cả cho Kafka
+Streams. Vì vậy các service dùng Kafka (customer, product, core-banking,
+notification) không có dòng `kafka` trong bảng dependencies của `GET .../info`.
+
+`WATCHED_DEPENDENCIES` trong các `ServiceInfoController` vẫn cố ý chứa `"kafka"`:
+khi nào có indicator — tự viết bằng `KafkaAdmin.describeCluster` với timeout
+ngắn, hoặc Boot bổ sung — dòng kafka tự xuất hiện, không phải sửa code.
+```
+
+- [ ] **Step 6b: Cập nhật `README.md` gốc** — thêm mục sau (đặt sau mục "Database" hoặc cuối "Bắt đầu"), và nếu README còn câu khẳng định "đúng 6 file `.java`" thì sửa thành "6 main class + code nghiệp vụ tăng dần theo feature":
 
 ```markdown
 ## Frontend dashboard
@@ -1272,7 +1288,7 @@ indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
 
 ```bash
 cd /Users/tanvx/Dev/bank-platform
-git add README.md
+git add README.md docs/KNOWN-LIMITATIONS.md
 git commit -m "docs: mục Frontend dashboard trong README gốc
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
