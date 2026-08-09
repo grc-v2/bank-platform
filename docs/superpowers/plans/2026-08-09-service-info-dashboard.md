@@ -117,6 +117,9 @@ class ServiceInfoApiTest extends BaseIntegrationTest {
         assertThat(data.path("dbSchema").asText()).isEqualTo("auth");
         assertThat(data.path("errorCodePrefix").asText()).isEqualTo("ERR-AUTH");
         assertThat(data.path("version").asText()).isNotBlank();
+        // Ghim build-info thật sự chạy: bỏ execution ở root pom thì rơi về
+        // fallback "unknown" và dòng dưới phải fail lộ ra ngay, không âm thầm.
+        assertThat(data.path("version").asText()).isNotEqualTo("unknown");
         assertThat(data.path("springBootVersion").asText()).isEqualTo("4.1.0");
         assertThat(data.path("uptimeSeconds").asLong()).isGreaterThanOrEqualTo(0);
 
@@ -341,13 +344,18 @@ public class ServiceInfoController {
 
 ```xml
     <!--
-      javalibs-cache-spring-boot-starter mặc định chạy Caffeine (in-memory); POM
-      của chính nó ghi rõ: "To use Redis instead, add spring-boot-starter-data-redis
-      to the application — the auto-configuration switches automatically." Thiếu
-      dependency này thì JavalibsRedisCacheAutoConfiguration không có
-      RedisConnectionFactory để inject nên không kích hoạt, và actuator HealthEndpoint
-      không có component "redis" — sai với mục đích khai báo ở trên (blacklist revoke
-      qua Redis) lẫn với application.yml đã cấu hình spring.data.redis.*.
+      Auth KHÔNG bật @EnableCaching, nên JavalibsRedisCacheAutoConfiguration
+      (gate @ConditionalOnBean(CacheAspectSupport.class)) không kích hoạt ở
+      đây dù có dependency này — khác với product, nơi comment tương tự nói
+      về cache thật sự đúng. Cái auth cần từ dependency này là hai thứ khác:
+      (1) bean RedisConnectionFactory/StringRedisTemplate mà
+      javalibs.security.blacklist.mode=redis sẽ cần khi bật revoke token
+      (mặc định mode là "none" — chưa dùng ngay, nhưng bean phải sẵn để
+      chuyển mode không cần đổi dependency sau này); (2) DataRedisHealthIndicator
+      của actuator, thứ đưa dòng "redis" vào dependencies của GET
+      /api/auth/info — đúng thứ ServiceInfoApiTest assert
+      (dependencyNames(data).contains("redis")). application.yml đã cấu hình
+      spring.data.redis.* sẵn.
     -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -355,7 +363,17 @@ public class ServiceInfoController {
     </dependency>
 ```
 
-(Ở product, vế "blacklist revoke qua Redis" đổi thành "cache catalog qua Redis" — mục đích thật của product; phần còn lại giữ nguyên. Cùng họ lỗi im lặng với spring-boot-flyway và spring-boot-kafka của plan trước.)
+Ở **product (Task 2)**, comment cạnh dependency này KHÁC HẲN vì lý do khác:
+product CÓ `@EnableCaching` (dùng javalibs-cache cho catalog), nên đây đúng là
+trường hợp `JavalibsRedisCacheAutoConfiguration` không có `RedisConnectionFactory`
+để inject nên không kích hoạt — giữ nguyên bản comment "mặc định Caffeine,
+thiếu dependency thì HealthEndpoint không có component redis, sai với mục
+đích cache catalog qua Redis lẫn với application.yml đã cấu hình
+spring.data.redis.*". Đừng chép nguyên văn comment của auth sang product hay
+ngược lại — hai service kích hoạt Redis theo hai cơ chế khác nhau (security
+blacklist mode ở auth vs. cache autoconfiguration ở product). Cùng họ lỗi im
+lặng với spring-boot-flyway và spring-boot-kafka của plan trước, nhưng cơ chế
+kích hoạt không giống nhau nên comment không được dùng chung.
 
 Áp cho auth (task này) và **product (Task 2)** — hai service duy nhất có `spring.data.redis` trong yml. Notification/core-banking/customer KHÔNG thêm.
 
@@ -448,7 +466,7 @@ Bốn file Java + test của mỗi service **giống hệt Task 1** ngoài các 
 | yml `permit-all` dòng cuối | `- /api/products/info` | `- /api/notifications/info` |
 | test đường gọi + giá trị assert | theo bảng | theo bảng |
 | test dependencies | `db` UP **và** `contains("redis")` (product có redis) | CHỈ `db` UP — notification KHÔNG có redis, thêm `assertThat(dependencyNames(data)).doesNotContain("redis")` |
-| pom service | THÊM `spring-boot-starter-data-redis` + comment y như auth (xem chú thích trước Step 7 của Task 1 — thiếu là assertion redis không bao giờ thoả) | KHÔNG thêm gì vào pom |
+| pom service | THÊM `spring-boot-starter-data-redis` + comment RIÊNG của product — lý do cache, KHÔNG chép comment của auth (xem chú thích trước Step 7 của Task 1 — thiếu dependency là assertion redis không bao giờ thoả) | KHÔNG thêm gì vào pom |
 
 Ba lưu ý khi chép mà bảng không nói:
 
@@ -774,13 +792,17 @@ import java.util.List;
  * frontend đều đi qua đây: một chỗ sửa thay vì sáu. Gateway không dùng
  * javalibs nên không có javalibs.web.cors.* — filter tự khai.
  *
- * Dùng servlet Filter ở HIGHEST_PRECEDENCE — cùng kiểu với CorsAutoConfiguration
- * của javalibs-web đang chạy ở năm service kia — để header CORS được gắn TRƯỚC
- * mọi filter khác có thể tự trả response. Lưu ý cho người sửa sau:
- * addCorsMappings của WebMvcConfigurer CŨNG áp được cho route RouterFunction
- * (RouterFunctionMapping nhận chung map CORS của MVC) — chọn Filter ở đây là vì
- * nhất quán với phần còn lại của repo và thứ tự filter tường minh, không phải
- * vì RouterFunction "cần" Filter.
+ * Dùng servlet Filter ở HIGHEST_PRECEDENCE — theo đúng khuôn của
+ * CorsAutoConfiguration bên javalibs-web (một CorsFilter đăng ký qua
+ * FilterRegistrationBean, dù bên đó dùng HIGHEST_PRECEDENCE + 10). Autoconfigure
+ * đó opt-in (@ConditionalOnProperty javalibs.web.cors.enabled=true, không
+ * matchIfMissing) và hiện KHÔNG service nào bật nó — ở đây chỉ mượn cách làm,
+ * không phải bản sao của cái đang chạy đâu đó. Mục đích giống nhau: để header
+ * CORS được gắn TRƯỚC mọi filter khác có thể tự trả response. Lưu ý cho người
+ * sửa sau: addCorsMappings của WebMvcConfigurer CŨNG áp được cho route
+ * RouterFunction (RouterFunctionMapping nhận chung map CORS của MVC) — chọn
+ * Filter ở đây là vì nhất quán với phần còn lại của repo và thứ tự filter
+ * tường minh, không phải vì RouterFunction "cần" Filter.
  */
 @Configuration
 public class CorsConfig {
@@ -1279,7 +1301,7 @@ Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
 (permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
 uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
 Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
-indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
+indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 ```
 
 (Bỏ dấu `​` nếu có khi chép — fence lồng trong fence.)
