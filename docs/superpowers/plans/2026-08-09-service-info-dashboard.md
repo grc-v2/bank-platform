@@ -602,7 +602,11 @@ class GatewayInfoApiTest {
                 .andExpect(jsonPath("$.data.port").value(8080))
                 .andExpect(jsonPath("$.data.routes.length()").value(5))
                 .andExpect(jsonPath("$.data.routes[?(@.id=='auth')].paths[0]").value("/api/auth/**"))
-                .andExpect(jsonPath("$.data.routes[?(@.id=='core-banking')].target[0]")
+                // .target KHÔNG có [0]: sau filter, [0] trên trường vô hướng (String)
+                // không khớp gì trong Jayway JsonPath — chỉ trường mảng như paths mới
+                // index được. Với .target, filter trả list một phần tử và
+                // MockMvc value() tự unwrap. Implementer Task 4 bắt được bằng jshell.
+                .andExpect(jsonPath("$.data.routes[?(@.id=='core-banking')].target")
                         .value("http://localhost:8084"));
     }
 }
