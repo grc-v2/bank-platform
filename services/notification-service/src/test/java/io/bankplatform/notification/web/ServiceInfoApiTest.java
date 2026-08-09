@@ -39,6 +39,9 @@ class ServiceInfoApiTest extends BaseIntegrationTest {
         assertThat(data.path("dbSchema").asText()).isEqualTo("notification");
         assertThat(data.path("errorCodePrefix").asText()).isEqualTo("ERR-NOTI");
         assertThat(data.path("version").asText()).isNotBlank();
+        // Ghim build-info thật sự chạy: bỏ execution ở root pom thì rơi về
+        // fallback "unknown" và dòng dưới phải fail lộ ra ngay, không âm thầm.
+        assertThat(data.path("version").asText()).isNotEqualTo("unknown");
         assertThat(data.path("springBootVersion").asText()).isEqualTo("4.1.0");
         assertThat(data.path("uptimeSeconds").asLong()).isGreaterThanOrEqualTo(0);
 
