@@ -136,6 +136,17 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 --  Dùng now() (thời điểm BẮT ĐẦU transaction) chứ không clock_timestamp(): mọi hàng
 --  sửa trong cùng một transaction mang đúng một mốc, khớp với DEFAULT now() của
 --  created_at. Phía đọc CDC nhờ đó thấy một transaction là một mốc thời gian.
+--
+--  KHÔNG dùng WHEN (OLD.* IS DISTINCT FROM NEW.*), nên một UPDATE không đổi gì vẫn
+--  đẩy updated_at và vẫn tạo một nhịp thừa cho CDC. Đã cân nhắc và CỐ Ý bỏ, không
+--  phải quên: Postgres từ chối thẳng mệnh đề đó trên core_banking.accounts —
+--    ERROR: BEFORE trigger's WHEN condition cannot reference NEW generated columns
+--  vì accounts có cột GENERATED available_balance (bảy bảng còn lại thì không).
+--  Gắn guard cho bảy bảng kia mà bỏ accounts sẽ tạo ra HAI ngữ nghĩa updated_at khác
+--  nhau trong cùng một database — đúng thứ tệ nhất cho phía tiêu thụ mà cột này sinh
+--  ra để phục vụ. Còn liệt kê tay từng cột riêng cho accounts thì mỗi cột thêm về sau
+--  sẽ lặng lẽ nằm ngoài guard, ngay trên bảng sổ cái. Chọn nhiễu ĐỀU thay vì nhiễu
+--  lệch. Nếu sau này bỏ cột GENERATED kia, hãy gắn guard cho cả tám bảng cùng lúc.
 -- ---------------------------------------------------------------------
 CREATE FUNCTION public.set_updated_at() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
@@ -617,6 +628,12 @@ CREATE TABLE product_interest_rates (
     --      đột với nhau, đúng những dòng cần bảo vệ nhất lại lọt hết. COALESCE về -1 kéo
     --      NULL thành giá trị so sánh được; -1 an toàn vì ck_rate_term đã bắt
     --      term_months > 0 nên không dòng thật nào mang -1.
+    --
+    -- KHÔNG DEFERRABLE — giống hệt ba ràng buộc ex_* anh em, nên hành vi nhất quán
+    -- trong cả file. Hệ quả thực hành khi đổi lãi suất, viết ra đây vì chưa chỗ nào
+    -- ghi: phải ĐÓNG dòng cũ TRƯỚC (UPDATE effective_to) rồi mới INSERT dòng mới.
+    -- Làm ngược thứ tự thì ngay tại câu INSERT hai khoảng còn phủ nhau và câu lệnh bị
+    -- chặn, dù trạng thái cuối transaction hoàn toàn hợp lệ.
     CONSTRAINT ex_rate_overlap EXCLUDE USING gist (
         product_id                                    WITH =,
         COALESCE(term_months, -1)                     WITH =,
@@ -946,6 +963,7 @@ CREATE TABLE journal_entries (
     description          VARCHAR(500),
     reversal_of_entry_id BIGINT       REFERENCES journal_entries (id),
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_txid         xid8         NOT NULL DEFAULT pg_current_xact_id(),
     CONSTRAINT uq_journal_reference UNIQUE (entry_reference),
     CONSTRAINT ck_journal_txn_type CHECK (transaction_type IN (
         'TRANSFER', 'FEE', 'INTEREST', 'REVERSAL', 'ADJUSTMENT', 'OPENING')),
@@ -960,6 +978,8 @@ COMMENT ON COLUMN journal_entries.booking_date IS
     'NGÀY HẠCH TOÁN — quyết định bút toán rơi vào kỳ sổ nào';
 COMMENT ON COLUMN journal_entries.reversal_of_entry_id IS
     'Sổ cái APPEND-ONLY: sai thì ghi bút toán đảo trỏ về bản gốc, không bao giờ UPDATE hay DELETE bút toán cũ';
+COMMENT ON COLUMN journal_entries.created_txid IS
+    'TỒN TẠI ĐỂ trg_journal_lines_same_txn phân biệt được "header vừa sinh trong transaction này" với "header của một transaction đã xong". KHÔNG trùng vai với system column xmin: xmin của hàng ghi trong SAVEPOINT là id của SUBTRANSACTION, còn cột này lấy DEFAULT pg_current_xact_id() nên luôn là id transaction NGOÀI CÙNG. Xoá cột là mở lại lỗ hổng chèn dòng vào bút toán đã chốt — đọc khối comment ở trg_journal_lines_same_txn trước khi động vào';
 
 -- MỘT bút toán chỉ được đảo MỘT LẦN. ck_journal_reversal ở trên bắt REVERSAL phải
 -- trỏ về bản gốc, nhưng không nói gì về việc hai bút toán đảo cùng trỏ về một gốc.
@@ -969,6 +989,13 @@ COMMENT ON COLUMN journal_entries.reversal_of_entry_id IS
 -- Partial index (bỏ NULL) chứ không UNIQUE thường: đại đa số bút toán không phải
 -- bút toán đảo, không việc gì phải đánh index cho NULL của chúng.
 -- Đảo một bút toán đảo VẪN được: C đảo B, B đảo A -> hai giá trị khác nhau.
+--
+-- ĐÂY LÀ MỘT LỰA CHỌN CHÍNH SÁCH, không phải chân lý hiển nhiên. Nó đồng thời cấm
+-- ĐẢO TỪNG PHẦN — nhiều bút toán đảo nhỏ cùng trỏ về một bút toán gốc — vốn là việc
+-- có thật trong nghiệp vụ ngân hàng. Ở phạm vi này ta chọn "một gốc, một đảo" vì nó
+-- đơn giản và DB kiểm được bằng một index. Ngày nào cần đảo từng phần thì phải thay
+-- ràng buộc này bằng một ràng buộc trên TỔNG số tiền đã đảo (không vượt bản gốc),
+-- chứ đừng chỉ lặng lẽ DROP index rồi đi tiếp.
 CREATE UNIQUE INDEX uq_journal_one_reversal
     ON journal_entries (reversal_of_entry_id) WHERE reversal_of_entry_id IS NOT NULL;
 
@@ -1159,23 +1186,32 @@ CREATE TRIGGER trg_journal_lines_immutable
 -- nên trước trigger này INSERT là đường vòng duy nhất còn mở — và nó không để lại
 -- dấu vết nào, bút toán vẫn "tồn tại hợp lệ", chỉ là nội dung đã khác lúc chốt.
 --
--- CƠ CHẾ PHÂN BIỆT: hàng header mang system column xmin = id transaction đã tạo ra
--- nó. Header insert trong CHÍNH transaction đang chạy thì xmin bằng
--- pg_current_xact_id(); header đã commit từ trước thì khác. Cast xid8 -> xid dùng
--- cast dựng sẵn của Postgres (pg_cast có castsource = xid8, casttarget = xid), không
--- phải mẹo đi vòng qua text.
+-- CƠ CHẾ: so journal_entries.created_txid với pg_current_xact_id() tại lúc chèn dòng.
+-- Bằng nhau nghĩa là header sinh ra trong CHÍNH transaction đang chạy — cho qua. Khác
+-- nhau nghĩa là header thuộc một transaction khác đã kết thúc — chặn.
 --
--- GIỚI HẠN ĐÃ BIẾT — ghi ra để người sau không mất một buổi chiều: pg_current_xact_id()
--- trả xid của transaction NGOÀI CÙNG, còn xmin của hàng ghi trong một subtransaction
--- (SAVEPOINT) là xid của subtransaction đó. Nên nếu header được insert BÊN TRONG một
--- savepoint đã RELEASE, rồi các dòng mới insert ở mức ngoài, trigger này TỪ CHỐI OAN.
--- Đã kiểm bằng thực nghiệm: đó là trường hợp oan duy nhất — header ở mức ngoài còn
--- các dòng nằm trong savepoint thì vẫn chạy đúng.
+-- VÌ SAO PHẢI CÓ CỘT created_txid MÀ KHÔNG DÙNG system column xmin. Đọc hết đoạn này
+-- trước khi xoá cột đó vì tưởng nó thừa:
+--   pg_current_xact_id() LUÔN trả id của transaction NGOÀI CÙNG. Còn xmin của một hàng
+--   ghi bên trong SAVEPOINT là id của SUBTRANSACTION, không phải của transaction ngoài
+--   cùng. Đo trực tiếp trên chính DB này: mở transaction (id ngoài cùng 1023), vào
+--   SAVEPOINT rồi INSERT header — xmin của header là 1024. Hai số không khớp.
+--   Hệ quả nếu dùng xmin: MỌI bố cục ghi header bên trong savepoint đều bị từ chối OAN.
+--   Đã dựng lại và xác nhận cả ba bố cục sau đều bị chặn sai:
+--     * header và các dòng cùng nằm trong một SAVEPOINT rồi RELEASE — đây đúng là thứ
+--       @Transactional(propagation = NESTED) của Spring sinh ra;
+--     * header trong SAVEPOINT đã RELEASE, các dòng ở mức ngoài;
+--     * SAVEPOINT/RELEASE bọc quanh TỪNG câu lệnh — hình dạng SQL mà PgJDBC tạo ra khi
+--       chạy với autosave=always (và với autosave=conservative sau một lỗi đã hồi phục).
+--       Với cấu hình đó thì mọi bút toán của hệ thống đều fail.
+--   created_txid lấy giá trị từ DEFAULT pg_current_xact_id(), và DEFAULT dù được tính
+--   BÊN TRONG savepoint vẫn cho id transaction ngoài cùng — đúng cái mà xmin không có.
+--   Cột này còn bỏ luôn phép cast xid8 -> xid (64 bit xuống 32 bit) và rủi ro wraparound
+--   đi kèm: xid8 so với xid8, không cast.
 --
--- HỢP ĐỒNG GHI SỔ suy ra từ giới hạn đó: ghi header và các dòng của MỘT bút toán ở
--- cùng một mức transaction, đừng cắt savepoint vào giữa hai bước. Đánh đổi chấp nhận
--- được vì ràng buộc này fail TO: sai thì nổ ngay tại INSERT, lộ ra tức thì, thay vì
--- âm thầm làm hỏng sổ cái như khoảng hở mà nó thay thế.
+-- KHÔNG có ràng buộc nào về mức lồng transaction. Ghi header và các dòng ở mức nào,
+-- qua bao nhiêu lớp savepoint, theo thứ tự nào cũng được — điều kiện duy nhất là chúng
+-- thuộc cùng MỘT transaction ngoài cùng.
 -- ---------------------------------------------------------------------
 CREATE FUNCTION core_banking.assert_entry_not_committed() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
@@ -1186,7 +1222,7 @@ BEGIN
       INTO v_ref
       FROM core_banking.journal_entries e
      WHERE e.id = NEW.journal_entry_id
-       AND e.xmin <> pg_current_xact_id()::xid;
+       AND e.created_txid <> pg_current_xact_id();
 
     IF FOUND THEN
         RAISE EXCEPTION
