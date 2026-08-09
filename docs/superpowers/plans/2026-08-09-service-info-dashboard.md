@@ -22,7 +22,7 @@
 - **Bẫy `permit-all`:** `javalibs.security.permit-all` là list — khai trong yml là THAY THẾ list mặc định, không phải nối thêm. Phải khai lại đủ 7 đường mặc định + đường info (xem code từng task).
 - Các API/kết luận sau đã xác minh trên jar thật ngày 2026-08-09, đừng "sửa" lại theo trí nhớ:
   - `HealthEndpoint.health()` trả `HealthDescriptor`; cast `CompositeHealthDescriptor` → `getComponents(): Map<String, HealthDescriptor>` → `getStatus().getCode()`. Package `org.springframework.boot.health.actuate.endpoint` / `...health.contributor`.
-  - **Không có health indicator cho Kafka client thường** (không có trong `spring-boot-kafka` 4.1.0 lẫn javalibs-datahub) → bảng dependencies không có dòng `kafka`; whitelist vẫn chứa `"kafka"` để khi nào có indicator là tự hiện.
+  - **Boot 4.1 không có health indicator nào cho Kafka** — reviewer Task 1 soát cả `spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka` lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka (kể cả cho Kafka Streams — đừng viết lại câu "chỉ có cho Streams", nó sai). Bảng dependencies không có dòng `kafka`; whitelist vẫn chứa `"kafka"` để khi nào có indicator là tự hiện.
   - `@AutoConfigureMockMvc` Boot 4.1 nằm ở `org.springframework.boot.webmvc.test.autoconfigure` (jar `spring-boot-webmvc-test`, KHÔNG có trong starter-test).
   - `TestRestTemplate` Boot 4.1 nằm ở `org.springframework.boot.resttestclient`.
   - `GatewayMvcProperties` (`org.springframework.cloud.gateway.server.mvc.config`): `getRoutes(): List<RouteProperties>`; `RouteProperties.getId()/getUri()/getPredicates()`; `PredicateProperties.getName()/getArgs()`.
@@ -280,9 +280,10 @@ public class ServiceInfoController {
     /**
      * Chỉ ba hạ tầng này đáng hiển thị — các component còn lại của actuator
      * (diskSpace, ping, ssl) là nhiễu với dashboard. "kafka" nằm sẵn trong
-     * danh sách dù hiện KHÔNG có indicator nào cho Kafka client thường
-     * (Boot 4.1 chỉ có cho Kafka Streams): khi nào có indicator, dòng kafka
-     * tự xuất hiện mà không phải sửa code.
+     * danh sách dù Boot 4.1 KHÔNG có health indicator nào cho Kafka — đã soát
+     * cả actuator, spring-boot-kafka lẫn spring-kafka 4.1.0, không jar nào
+     * chứa lớp health Kafka. Khi nào có indicator (tự viết hay Boot thêm),
+     * dòng kafka tự xuất hiện mà không phải sửa code.
      */
     private static final Set<String> WATCHED_DEPENDENCIES = Set.of("db", "redis", "kafka");
 
@@ -340,17 +341,21 @@ public class ServiceInfoController {
 
 ```xml
     <!--
-      javalibs-cache-spring-boot-starter CỐ Ý không kèm spring-boot-starter-data-redis
-      (docs/modules/cache.md: "ứng dụng muốn Redis phải tự thêm"). Thiếu nó thì
-      khối spring.data.redis trong yml là cấu hình TREO: không RedisConnectionFactory,
-      javalibs-cache lặng lẽ rơi về Caffeine, và actuator không có component redis.
-      Cùng họ lỗi im lặng với spring-boot-flyway và spring-boot-kafka của plan trước.
+      javalibs-cache-spring-boot-starter mặc định chạy Caffeine (in-memory); POM
+      của chính nó ghi rõ: "To use Redis instead, add spring-boot-starter-data-redis
+      to the application — the auto-configuration switches automatically." Thiếu
+      dependency này thì JavalibsRedisCacheAutoConfiguration không có
+      RedisConnectionFactory để inject nên không kích hoạt, và actuator HealthEndpoint
+      không có component "redis" — sai với mục đích khai báo ở trên (blacklist revoke
+      qua Redis) lẫn với application.yml đã cấu hình spring.data.redis.*.
     -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
     </dependency>
 ```
+
+(Ở product, vế "blacklist revoke qua Redis" đổi thành "cache catalog qua Redis" — mục đích thật của product; phần còn lại giữ nguyên. Cùng họ lỗi im lặng với spring-boot-flyway và spring-boot-kafka của plan trước.)
 
 Áp cho auth (task này) và **product (Task 2)** — hai service duy nhất có `spring.data.redis` trong yml. Notification/core-banking/customer KHÔNG thêm.
 
@@ -450,6 +455,7 @@ Ba lưu ý khi chép mà bảng không nói:
 1. Javadoc của controller ở dòng "auth-service chưa có nghiệp vụ" — đổi thành lý do đúng của permit-all cho MỌI service: `Nằm trong permit-all có chủ đích: hệ chưa có luồng phát JWT nào, nên bắt xác thực ở đây là khoá luôn dashboard.` (Task 1 dùng câu này luôn cho auth cũng đúng — nếu muốn đồng nhất thì thôi, giữ nguyên văn Task 1.)
 2. Khối `javalibs.security` của notification hiện KHÔNG có `permit-all` — thêm mới nguyên khối như Task 1 Step 7 (đổi dòng cuối). Khối của product cũng vậy.
 3. `DependencyStatus`/`ServiceInfoResponse` là bản chép nguyên văn đổi mỗi dòng `package` — đó là chủ đích (bank-common cấm REST DTO), đừng "khéo léo" tạo module chung.
+4. Test của product sẽ in một stack trace `RedisConnectionException: Unable to connect to localhost:6379` trong lúc VẪN PASS — Redis không chạy trong môi trường test, indicator báo DOWN là đúng thiết kế (test chỉ assert dòng redis CÓ MẶT). Đừng tưởng là fail, đừng "sửa". Auth ở Task 1 cũng in y như vậy.
 
 - [ ] **Step 1: Viết 2 test fail trước** (chép `ServiceInfoApiTest` của Task 1 Step 2, áp bảng thay thế trên)
 - [ ] **Step 2: Chạy, xác nhận cả hai fail vì 404/401**
