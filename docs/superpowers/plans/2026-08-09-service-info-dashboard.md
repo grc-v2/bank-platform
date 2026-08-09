@@ -774,9 +774,13 @@ import java.util.List;
  * frontend đều đi qua đây: một chỗ sửa thay vì sáu. Gateway không dùng
  * javalibs nên không có javalibs.web.cors.* — filter tự khai.
  *
- * Dùng servlet Filter thay vì WebMvcConfigurer#addCorsMappings để chắc chắn áp
- * cho CẢ các route RouterFunction của Spring Cloud Gateway, không riêng
- * @RestController.
+ * Dùng servlet Filter ở HIGHEST_PRECEDENCE — cùng kiểu với CorsAutoConfiguration
+ * của javalibs-web đang chạy ở năm service kia — để header CORS được gắn TRƯỚC
+ * mọi filter khác có thể tự trả response. Lưu ý cho người sửa sau:
+ * addCorsMappings của WebMvcConfigurer CŨNG áp được cho route RouterFunction
+ * (RouterFunctionMapping nhận chung map CORS của MVC) — chọn Filter ở đây là vì
+ * nhất quán với phần còn lại của repo và thứ tự filter tường minh, không phải
+ * vì RouterFunction "cần" Filter.
  */
 @Configuration
 public class CorsConfig {
