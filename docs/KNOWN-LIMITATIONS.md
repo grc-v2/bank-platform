@@ -94,6 +94,18 @@ khai `env_file`, còn Spring Boot không tự đọc `.env`. Làm theo dòng đ�
 
 Nó đang là **danh sách tham chiếu các biến cần export**, không phải file cấu hình sống.
 
+### Bảng dependencies của API `/info` không có dòng `kafka`
+
+Boot 4.1 không có health indicator nào cho Kafka — đã soát cả
+`spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka`
+lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka, kể cả cho Kafka
+Streams. Vì vậy các service dùng Kafka (customer, product, core-banking,
+notification) không có dòng `kafka` trong bảng dependencies của `GET .../info`.
+
+`WATCHED_DEPENDENCIES` trong các `ServiceInfoController` vẫn cố ý chứa `"kafka"`:
+khi nào có indicator — tự viết bằng `KafkaAdmin.describeCluster` với timeout
+ngắn, hoặc Boot bổ sung — dòng kafka tự xuất hiện, không phải sửa code.
+
 ## Quy ước còn lệch
 
 - **Khoá ngoại không đặt tên tường minh.** 44/46 FK dùng tên Postgres tự sinh
