@@ -45,4 +45,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        # KHÔNG khai "gateway" ở đây. Bản webmvc của Spring Cloud Gateway KHÔNG có
+        # endpoint actuator nào: cả jar spring-cloud-gateway-server-webmvc-5.0.2
+        # (236 entry) không chứa một class @Endpoint/actuate nào — kiểm bằng
+        # `unzip -l` trên jar trong ~/.m2. Khai một endpoint không tồn tại thì Boot
+        # lặng lẽ bỏ qua, nên nó không gây lỗi; nó chỉ làm người đọc tưởng
+        # /actuator/gateway/routes dùng được (nó luôn trả 404 — xem README).
+        #
+        # Quan trọng hơn là thứ ĐÃ THIẾU: không có metrics,prometheus thì Prometheus
+        # không scrape nổi gateway. Năm service kia đều phơi đúng bốn endpoint dưới
+        # đây, nên để nguyên danh sách cũ nghĩa là thành phần MỌI request đi qua lại
+        # là điểm mù giám sát duy nhất của hệ thống. Giữ khớp với năm service kia.
+        include: health,info,metrics,prometheus

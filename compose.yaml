@@ -17,7 +17,14 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docs/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bank"]
+      # -h 127.0.0.1 KHÔNG thừa — bỏ nó đi là probe nói dối.
+      # Trong lúc initdb, docker-entrypoint.sh dựng một server TẠM bằng
+      # docker_temp_server_start() với `-c listen_addresses=''` (xem chính file đó
+      # trong image): server tạm nghe trên Unix socket nhưng KHÔNG nghe TCP.
+      # pg_isready không có -h thì đi qua Unix socket, nên nó báo "accepting
+      # connections" ngay khi server tạm còn sống — tức là TRƯỚC khi 01-schema.sql
+      # chạy xong. Ép qua TCP thì probe chỉ xanh được với server THẬT, sau initdb.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d bank"]
       interval: 5s
       timeout: 5s
       retries: 12

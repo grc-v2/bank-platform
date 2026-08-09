@@ -24,13 +24,37 @@
       train GA mới nhất là 2025.1.2, khai spring-boot.version 4.0.7 và quản lý
       spring-cloud-gateway 5.0.2.
 
-      Repo này chạy Boot 4.1.0 — LỆCH MỘT MINOR so với 4.0.7 mà train bám vào.
-      Chấp nhận có ý thức: cùng dòng major, và BOM của Spring Cloud chỉ ghim
-      version của các artifact spring-cloud, còn version Boot do
-      spring-boot-starter-parent ở POM gốc quyết định (nó đứng gần hơn trong
-      chuỗi phân giải). Nếu build hoặc khởi động lỗi vì lệch này, ghi lại lỗi
-      THẬT rồi báo BLOCKED — đừng tự hạ Boot xuống 4.0.x, đó là quyết định
-      ảnh hưởng cả sáu service chứ không riêng gateway.
+      Repo này chạy Boot 4.1.0 — LỆCH MỘT MINOR so với 4.0.7 ghi trong POM của
+      train. ĐÂY KHÔNG PHẢI MỘT XUNG ĐỘT VERSION, và lý do rất cụ thể:
+
+      spring-cloud-dependencies:2025.1.2 CHỈ quản lý artifact nhóm
+      org.springframework.cloud. Nó KHÔNG import spring-boot-dependencies, và
+      trong cả file POM đó lẫn POM cha spring-cloud-dependencies-parent:5.0.2
+      không có MỘT tham chiếu nào tới nhóm org.springframework.boot — kiểm bằng
+      `grep -c "org.springframework.boot"` trên hai file trong ~/.m2, cả hai trả 0.
+      Nghĩa là import BOM này KHÔNG đưa ra bất kỳ version Boot nào để mà tranh
+      chấp. Boot 4.1.0 từ spring-boot-starter-parent là version DUY NHẤT có mặt,
+      không phải version "thắng" một version nào khác.
+
+      Còn <spring-boot.version>4.0.7</spring-boot.version> nằm trong POM ấy thì
+      được KHAI nhưng không được THAM CHIẾU ở bất cứ đâu trong chính file ấy — nó
+      ghi lại dòng Boot mà train được build và kiểm thử cùng. Là tài liệu, không
+      phải cơ chế quản lý version. Đọc nhầm nó thành "train ghim Boot 4.0.7"
+      chính là cái bẫy ở đây.
+
+      QUY TẮC RÚT RA: một BOM import chỉ ghim đúng những artifact mà nó thực sự
+      quản lý. Trước khi tin rằng BOM đang đánh nhau với parent, mở POM của BOM
+      ra xem nó quản lý những nhóm nào.
+
+      LƯỚI AN TOÀN (đã kiểm bằng thực nghiệm, không suy luận): kể cả khi một train
+      tương lai CÓ import spring-boot-dependencies, dependencyManagement thừa kế
+      từ parent vẫn thắng BOM import ở POM con. Dựng một POM thử có parent
+      spring-boot-starter-parent:4.1.0 và tự import spring-boot-dependencies:4.0.7,
+      rồi chạy dependency:tree — mọi artifact Boot vẫn phân giải ở 4.1.0.
+
+      Nếu build hoặc khởi động lỗi vì lệch này, ghi lại lỗi THẬT rồi báo BLOCKED —
+      đừng tự hạ Boot xuống 4.0.x, đó là quyết định ảnh hưởng cả sáu service chứ
+      không riêng gateway.
     -->
     <spring-cloud.version>2025.1.2</spring-cloud.version>
   </properties>
