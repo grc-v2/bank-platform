@@ -94,6 +94,43 @@ khai `env_file`, còn Spring Boot không tự đọc `.env`. Làm theo dòng đ�
 
 Nó đang là **danh sách tham chiếu các biến cần export**, không phải file cấu hình sống.
 
+### Bảng dependencies của API `/info` không có dòng `kafka`
+
+Boot 4.1 không có health indicator nào cho Kafka — đã soát cả
+`spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka`
+lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka, kể cả cho Kafka
+Streams. Vì vậy các service dùng Kafka (customer, product, core-banking,
+notification) không có dòng `kafka` trong bảng dependencies của `GET .../info`.
+
+`WATCHED_DEPENDENCIES` trong các `ServiceInfoController` vẫn cố ý chứa `"kafka"`:
+khi nào có indicator — tự viết bằng `KafkaAdmin.describeCluster` với timeout
+ngắn, hoặc Boot bổ sung — dòng kafka tự xuất hiện, không phải sửa code.
+
+### API `/info` lộ trạng thái từng component hạ tầng cho người gọi ẩn danh
+
+`GET .../info` đọc thẳng `HealthEndpoint.health()`, cái này bỏ qua cờ
+`management.endpoint.health.show-details` (cờ đó chưa được set ở service nào —
+nghĩa là *never*, `/actuator/health` chỉ trả trạng thái tổng hợp). Kết quả:
+`/info` trả từng dòng db/redis kèm UP/DOWN mà `/actuator/health` đang giấu,
+và endpoint này nằm trong permit-all nên ai cũng gọi được. Không lộ chi tiết
+hay connection string — chấp nhận được cho môi trường dev. Ai bật
+`show-details` sau này cần biết đường vòng này tồn tại.
+
+### `/actuator/health` của auth + product giờ có thể trả 503 vì Redis
+
+Thêm `spring-boot-starter-data-redis` (xem Task 1/2 của kế hoạch
+service-info-dashboard) kéo theo health indicator Redis chạy trong tổ hợp
+`HealthEndpoint` mặc định — Redis không lên thì `/actuator/health` của hai
+service này chuyển DOWN (503), trước nhánh này thì chúng UP mà không cần
+Redis. Chạy local cần `docker compose up -d redis`.
+
+### Netty in WARN `MacOSDnsServerAddressStreamProvider` lúc khởi động auth/product trên macOS
+
+Lettuce (client Redis) dùng resolver DNS của Netty mà không có jar
+`netty-resolver-dns-native-macos`, nên in một dòng WARN vô hại lúc khởi động
+trên macOS. Cố ý không xử: tắt logger đó thì che luôn WARN Netty thật khác,
+còn thêm jar native thì kéo classifier macOS sang cả image Linux chạy CI/prod.
+
 ## Quy ước còn lệch
 
 - **Khoá ngoại không đặt tên tường minh.** 44/46 FK dùng tên Postgres tự sinh

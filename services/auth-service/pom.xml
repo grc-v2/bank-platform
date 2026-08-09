@@ -52,6 +52,24 @@
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-cache-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      Auth KHÔNG bật @EnableCaching, nên JavalibsRedisCacheAutoConfiguration
+      (gate @ConditionalOnBean(CacheAspectSupport.class)) không kích hoạt ở
+      đây dù có dependency này — khác với product, nơi comment tương tự nói
+      về cache thật sự đúng. Cái auth cần từ dependency này là hai thứ khác:
+      (1) bean RedisConnectionFactory/StringRedisTemplate mà
+      javalibs.security.blacklist.mode=redis sẽ cần khi bật revoke token
+      (mặc định mode là "none" — chưa dùng ngay, nhưng bean phải sẵn để
+      chuyển mode không cần đổi dependency sau này); (2) DataRedisHealthIndicator
+      của actuator, thứ đưa dòng "redis" vào dependencies của GET
+      /api/auth/info — đúng thứ ServiceInfoApiTest assert
+      (dependencyNames(data).contains("redis")). application.yml đã cấu hình
+      spring.data.redis.* sẵn.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
 
     <!--
       BẮT BUỘC, kể cả khi spring.flyway.enabled=false.

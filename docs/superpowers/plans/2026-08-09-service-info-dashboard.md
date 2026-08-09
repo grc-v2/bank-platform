@@ -22,7 +22,7 @@
 - **Bẫy `permit-all`:** `javalibs.security.permit-all` là list — khai trong yml là THAY THẾ list mặc định, không phải nối thêm. Phải khai lại đủ 7 đường mặc định + đường info (xem code từng task).
 - Các API/kết luận sau đã xác minh trên jar thật ngày 2026-08-09, đừng "sửa" lại theo trí nhớ:
   - `HealthEndpoint.health()` trả `HealthDescriptor`; cast `CompositeHealthDescriptor` → `getComponents(): Map<String, HealthDescriptor>` → `getStatus().getCode()`. Package `org.springframework.boot.health.actuate.endpoint` / `...health.contributor`.
-  - **Không có health indicator cho Kafka client thường** (không có trong `spring-boot-kafka` 4.1.0 lẫn javalibs-datahub) → bảng dependencies không có dòng `kafka`; whitelist vẫn chứa `"kafka"` để khi nào có indicator là tự hiện.
+  - **Boot 4.1 không có health indicator nào cho Kafka** — reviewer Task 1 soát cả `spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka` lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka (kể cả cho Kafka Streams — đừng viết lại câu "chỉ có cho Streams", nó sai). Bảng dependencies không có dòng `kafka`; whitelist vẫn chứa `"kafka"` để khi nào có indicator là tự hiện.
   - `@AutoConfigureMockMvc` Boot 4.1 nằm ở `org.springframework.boot.webmvc.test.autoconfigure` (jar `spring-boot-webmvc-test`, KHÔNG có trong starter-test).
   - `TestRestTemplate` Boot 4.1 nằm ở `org.springframework.boot.resttestclient`.
   - `GatewayMvcProperties` (`org.springframework.cloud.gateway.server.mvc.config`): `getRoutes(): List<RouteProperties>`; `RouteProperties.getId()/getUri()/getPredicates()`; `PredicateProperties.getName()/getArgs()`.
@@ -52,6 +52,7 @@ Redis chỉ có ở **auth** và **product** (hai service duy nhất có `spring
 
 **Files:**
 - Modify: `pom.xml` (root — thêm `<build><pluginManagement>`)
+- Modify: `services/auth-service/pom.xml` (thêm `spring-boot-starter-data-redis` — xem chú thích trước Step 7)
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/config/ServiceInfoProperties.java`
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/web/dto/ServiceInfoResponse.java`
 - Create: `services/auth-service/src/main/java/io/bankplatform/auth/web/dto/DependencyStatus.java`
@@ -116,6 +117,9 @@ class ServiceInfoApiTest extends BaseIntegrationTest {
         assertThat(data.path("dbSchema").asText()).isEqualTo("auth");
         assertThat(data.path("errorCodePrefix").asText()).isEqualTo("ERR-AUTH");
         assertThat(data.path("version").asText()).isNotBlank();
+        // Ghim build-info thật sự chạy: bỏ execution ở root pom thì rơi về
+        // fallback "unknown" và dòng dưới phải fail lộ ra ngay, không âm thầm.
+        assertThat(data.path("version").asText()).isNotEqualTo("unknown");
         assertThat(data.path("springBootVersion").asText()).isEqualTo("4.1.0");
         assertThat(data.path("uptimeSeconds").asLong()).isGreaterThanOrEqualTo(0);
 
@@ -279,9 +283,10 @@ public class ServiceInfoController {
     /**
      * Chỉ ba hạ tầng này đáng hiển thị — các component còn lại của actuator
      * (diskSpace, ping, ssl) là nhiễu với dashboard. "kafka" nằm sẵn trong
-     * danh sách dù hiện KHÔNG có indicator nào cho Kafka client thường
-     * (Boot 4.1 chỉ có cho Kafka Streams): khi nào có indicator, dòng kafka
-     * tự xuất hiện mà không phải sửa code.
+     * danh sách dù Boot 4.1 KHÔNG có health indicator nào cho Kafka — đã soát
+     * cả actuator, spring-boot-kafka lẫn spring-kafka 4.1.0, không jar nào
+     * chứa lớp health Kafka. Khi nào có indicator (tự viết hay Boot thêm),
+     * dòng kafka tự xuất hiện mà không phải sửa code.
      */
     private static final Set<String> WATCHED_DEPENDENCIES = Set.of("db", "redis", "kafka");
 
@@ -334,6 +339,43 @@ public class ServiceInfoController {
     }
 }
 ```
+
+**Chú thích bắt buộc trước Step 7 — `spring-boot-starter-data-redis`:** thêm vào `<dependencies>` của `services/auth-service/pom.xml` (cạnh `javalibs-cache-spring-boot-starter`):
+
+```xml
+    <!--
+      Auth KHÔNG bật @EnableCaching, nên JavalibsRedisCacheAutoConfiguration
+      (gate @ConditionalOnBean(CacheAspectSupport.class)) không kích hoạt ở
+      đây dù có dependency này — khác với product, nơi comment tương tự nói
+      về cache thật sự đúng. Cái auth cần từ dependency này là hai thứ khác:
+      (1) bean RedisConnectionFactory/StringRedisTemplate mà
+      javalibs.security.blacklist.mode=redis sẽ cần khi bật revoke token
+      (mặc định mode là "none" — chưa dùng ngay, nhưng bean phải sẵn để
+      chuyển mode không cần đổi dependency sau này); (2) DataRedisHealthIndicator
+      của actuator, thứ đưa dòng "redis" vào dependencies của GET
+      /api/auth/info — đúng thứ ServiceInfoApiTest assert
+      (dependencyNames(data).contains("redis")). application.yml đã cấu hình
+      spring.data.redis.* sẵn.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+```
+
+Ở **product (Task 2)**, comment cạnh dependency này KHÁC HẲN vì lý do khác:
+product CÓ `@EnableCaching` (dùng javalibs-cache cho catalog), nên đây đúng là
+trường hợp `JavalibsRedisCacheAutoConfiguration` không có `RedisConnectionFactory`
+để inject nên không kích hoạt — giữ nguyên bản comment "mặc định Caffeine,
+thiếu dependency thì HealthEndpoint không có component redis, sai với mục
+đích cache catalog qua Redis lẫn với application.yml đã cấu hình
+spring.data.redis.*". Đừng chép nguyên văn comment của auth sang product hay
+ngược lại — hai service kích hoạt Redis theo hai cơ chế khác nhau (security
+blacklist mode ở auth vs. cache autoconfiguration ở product). Cùng họ lỗi im
+lặng với spring-boot-flyway và spring-boot-kafka của plan trước, nhưng cơ chế
+kích hoạt không giống nhau nên comment không được dùng chung.
+
+Áp cho auth (task này) và **product (Task 2)** — hai service duy nhất có `spring.data.redis` trong yml. Notification/core-banking/customer KHÔNG thêm.
 
 - [ ] **Step 7: Bật `@ConfigurationPropertiesScan` và cấu hình yml**
 
@@ -424,12 +466,14 @@ Bốn file Java + test của mỗi service **giống hệt Task 1** ngoài các 
 | yml `permit-all` dòng cuối | `- /api/products/info` | `- /api/notifications/info` |
 | test đường gọi + giá trị assert | theo bảng | theo bảng |
 | test dependencies | `db` UP **và** `contains("redis")` (product có redis) | CHỈ `db` UP — notification KHÔNG có redis, thêm `assertThat(dependencyNames(data)).doesNotContain("redis")` |
+| pom service | THÊM `spring-boot-starter-data-redis` + comment RIÊNG của product — lý do cache, KHÔNG chép comment của auth (xem chú thích trước Step 7 của Task 1 — thiếu dependency là assertion redis không bao giờ thoả) | KHÔNG thêm gì vào pom |
 
 Ba lưu ý khi chép mà bảng không nói:
 
 1. Javadoc của controller ở dòng "auth-service chưa có nghiệp vụ" — đổi thành lý do đúng của permit-all cho MỌI service: `Nằm trong permit-all có chủ đích: hệ chưa có luồng phát JWT nào, nên bắt xác thực ở đây là khoá luôn dashboard.` (Task 1 dùng câu này luôn cho auth cũng đúng — nếu muốn đồng nhất thì thôi, giữ nguyên văn Task 1.)
 2. Khối `javalibs.security` của notification hiện KHÔNG có `permit-all` — thêm mới nguyên khối như Task 1 Step 7 (đổi dòng cuối). Khối của product cũng vậy.
 3. `DependencyStatus`/`ServiceInfoResponse` là bản chép nguyên văn đổi mỗi dòng `package` — đó là chủ đích (bank-common cấm REST DTO), đừng "khéo léo" tạo module chung.
+4. Test của product sẽ in một stack trace `RedisConnectionException: Unable to connect to localhost:6379` trong lúc VẪN PASS — Redis không chạy trong môi trường test, indicator báo DOWN là đúng thiết kế (test chỉ assert dòng redis CÓ MẶT). Đừng tưởng là fail, đừng "sửa". Auth ở Task 1 cũng in y như vậy.
 
 - [ ] **Step 1: Viết 2 test fail trước** (chép `ServiceInfoApiTest` của Task 1 Step 2, áp bảng thay thế trên)
 - [ ] **Step 2: Chạy, xác nhận cả hai fail vì 404/401**
@@ -576,7 +620,11 @@ class GatewayInfoApiTest {
                 .andExpect(jsonPath("$.data.port").value(8080))
                 .andExpect(jsonPath("$.data.routes.length()").value(5))
                 .andExpect(jsonPath("$.data.routes[?(@.id=='auth')].paths[0]").value("/api/auth/**"))
-                .andExpect(jsonPath("$.data.routes[?(@.id=='core-banking')].target[0]")
+                // .target KHÔNG có [0]: sau filter, [0] trên trường vô hướng (String)
+                // không khớp gì trong Jayway JsonPath — chỉ trường mảng như paths mới
+                // index được. Với .target, filter trả list một phần tử và
+                // MockMvc value() tự unwrap. Implementer Task 4 bắt được bằng jshell.
+                .andExpect(jsonPath("$.data.routes[?(@.id=='core-banking')].target")
                         .value("http://localhost:8084"));
     }
 }
@@ -744,9 +792,17 @@ import java.util.List;
  * frontend đều đi qua đây: một chỗ sửa thay vì sáu. Gateway không dùng
  * javalibs nên không có javalibs.web.cors.* — filter tự khai.
  *
- * Dùng servlet Filter thay vì WebMvcConfigurer#addCorsMappings để chắc chắn áp
- * cho CẢ các route RouterFunction của Spring Cloud Gateway, không riêng
- * @RestController.
+ * Dùng servlet Filter ở HIGHEST_PRECEDENCE — theo đúng khuôn của
+ * CorsAutoConfiguration bên javalibs-web (một CorsFilter đăng ký qua
+ * FilterRegistrationBean, dù bên đó dùng HIGHEST_PRECEDENCE + 10). Autoconfigure
+ * đó opt-in (@ConditionalOnProperty javalibs.web.cors.enabled=true, không
+ * matchIfMissing) và hiện KHÔNG service nào bật nó — ở đây chỉ mượn cách làm,
+ * không phải bản sao của cái đang chạy đâu đó. Mục đích giống nhau: để header
+ * CORS được gắn TRƯỚC mọi filter khác có thể tự trả response. Lưu ý cho người
+ * sửa sau: addCorsMappings của WebMvcConfigurer CŨNG áp được cho route
+ * RouterFunction (RouterFunctionMapping nhận chung map CORS của MVC) — chọn
+ * Filter ở đây là vì nhất quán với phần còn lại của repo và thứ tự filter
+ * tường minh, không phải vì RouterFunction "cần" Filter.
  */
 @Configuration
 public class CorsConfig {
@@ -1213,7 +1269,23 @@ pkill -f "spring-boot:run" || true
 pkill -f "vite" || true
 ```
 
-- [ ] **Step 6: Cập nhật `README.md` gốc** — thêm mục sau (đặt sau mục "Database" hoặc cuối "Bắt đầu"), và nếu README còn câu khẳng định "đúng 6 file `.java`" thì sửa thành "6 main class + code nghiệp vụ tăng dần theo feature":
+- [ ] **Step 6a: Thêm mục Kafka vào `docs/KNOWN-LIMITATIONS.md`** — README ở Step 6b trỏ tới file này cho chuyện Kafka, nên mục phải TỒN TẠI trước khi con trỏ được ship. Thêm vào cuối phần `## Service`:
+
+```markdown
+### Bảng dependencies của API `/info` không có dòng `kafka`
+
+Boot 4.1 không có health indicator nào cho Kafka — đã soát cả
+`spring-boot-actuator`, `spring-boot-actuator-autoconfigure`, `spring-boot-kafka`
+lẫn `spring-kafka` 4.1.0: không jar nào chứa lớp health Kafka, kể cả cho Kafka
+Streams. Vì vậy các service dùng Kafka (customer, product, core-banking,
+notification) không có dòng `kafka` trong bảng dependencies của `GET .../info`.
+
+`WATCHED_DEPENDENCIES` trong các `ServiceInfoController` vẫn cố ý chứa `"kafka"`:
+khi nào có indicator — tự viết bằng `KafkaAdmin.describeCluster` với timeout
+ngắn, hoặc Boot bổ sung — dòng kafka tự xuất hiện, không phải sửa code.
+```
+
+- [ ] **Step 6b: Cập nhật `README.md` gốc** — thêm mục sau (đặt sau mục "Database" hoặc cuối "Bắt đầu"), và nếu README còn câu khẳng định "đúng 6 file `.java`" thì sửa thành "6 main class + code nghiệp vụ tăng dần theo feature":
 
 ```markdown
 ## Frontend dashboard
@@ -1229,7 +1301,7 @@ Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
 (permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
 uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
 Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
-indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
+indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 ```
 
 (Bỏ dấu `​` nếu có khi chép — fence lồng trong fence.)
@@ -1238,7 +1310,7 @@ indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
 
 ```bash
 cd /Users/tanvx/Dev/bank-platform
-git add README.md
+git add README.md docs/KNOWN-LIMITATIONS.md
 git commit -m "docs: mục Frontend dashboard trong README gốc
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
