@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.java   text diff=java
+*.sql    text
+*.yml    text
+*.yaml   text
+*.xml    text
+*.md     text diff=markdown
+
+*.jar    binary
+*.png    binary
+*.jpg    binary
+*.gif    binary
+*.ico    binary

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.bankplatform</groupId>
+    <artifactId>bank-platform</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>customer-service</artifactId>
+  <name>bank-platform :: customer-service</name>
+  <description>CIF: hồ sơ khách hàng, giấy tờ, địa chỉ, liên hệ, KYC, đánh giá rủi ro.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.bankplatform</groupId>
+      <artifactId>bank-common</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-web-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-security-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-openapi-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-observability-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-persistence-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- Mức A: Command/Query bus + AggregateRoot, ValueObject, BusinessRule -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-cqrs-spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-ddd-spring</artifactId>
+    </dependency>
+
+    <!-- Outbox: phát customer.kyc.approved.v1 cùng transaction với việc duyệt -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
+    </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này, customer.kyc.approved.v1 không phát nghĩa là khách đã được
+      duyệt KYC nhưng không service nào mở được tài khoản cho họ.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
+    <!-- Lọc động danh sách khách hàng -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-search-spring-boot-starter</artifactId>
+    </dependency>
+    <!--
+      CỐ Ý KHÔNG có javalibs-resilience: service này không gọi hệ thống ngoài nào.
+      Thêm circuit breaker cho thứ không có mạng lưới gọi ra là thêm cấu hình
+      phải bảo trì mà không bảo vệ gì.
+    -->
+
+    <!--
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

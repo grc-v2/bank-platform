@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: product-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bank}
+    username: ${DB_USER:product_svc}
+    password: ${DB_PASSWORD:product_dev}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: product
+
+  flyway:
+    # TẮT có chủ đích — xem services/auth-service/src/main/resources/application.yml
+    enabled: false
+    schemas: product
+    default-schema: product
+    clean-disabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: 8083
+
+javalibs:
+  security:
+    jwt:
+      secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

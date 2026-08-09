@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Build CẢ platform-libs (profile with-libs bật mặc định): đảm bảo bản
+      # javalibs nằm trong repo thực sự compile được, không chỉ tin vào artifact
+      # đã publish ở đâu đó.
+      - name: Build toàn reactor
+        run: mvn -B clean install -DskipTests
+
+      - name: Kiểm tra schema.sql chạy được
+        run: |
+          docker compose up -d postgres
+          # -h 127.0.0.1 KHÔNG thừa — bỏ nó đi là job này fail ngẫu nhiên trên commit tốt.
+          # Trong lúc initdb, docker-entrypoint.sh dựng server TẠM bằng
+          # docker_temp_server_start() với `-c listen_addresses=''`: nghe Unix socket,
+          # KHÔNG nghe TCP. pg_isready không có -h thì đi qua socket nên báo sẵn sàng
+          # ngay lúc server tạm còn sống — tức TRƯỚC khi 01-schema.sql chạy xong, và
+          # câu đếm bảng bên dưới chạy vào một database chưa có đủ 42 bảng.
+          # Ép qua TCP thì chỉ server THẬT (sau initdb) mới làm probe xanh được.
+          for i in $(seq 1 30); do
+            docker compose exec -T postgres pg_isready -h 127.0.0.1 -U postgres -d bank && break
+            sleep 2
+          done
+          COUNT=$(docker compose exec -T postgres psql -U postgres -d bank -tAc "
+            SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname IN ('auth','customer','product','core_banking','notification')
+              AND c.relkind IN ('r','p') AND c.oid NOT IN (SELECT inhrelid FROM pg_inherits)")
+          echo "Số bảng: $COUNT"
+          test "$COUNT" -eq 42

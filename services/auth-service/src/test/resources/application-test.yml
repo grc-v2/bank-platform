@@ -1,0 +1,9 @@
+# Profile test được BaseIntegrationTest của javalibs-test kích hoạt sẵn.
+javalibs:
+  security:
+    jwt:
+      secret: test-only-secret-please-change-me-at-least-32-bytes
+
+spring:
+  flyway:
+    enabled: false

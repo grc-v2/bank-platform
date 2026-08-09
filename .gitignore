@@ -1,7 +1,44 @@
-.DS_Store
-.idea/
+# Maven / Java
 target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+# IDE
+.idea/
 *.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log và báo cáo
+logs/
+*.log
+jacoco.exec
+surefire-reports/
+failsafe-reports/
+
+# Testcontainers / Docker
+.testcontainers.properties
+**/.testcontainers/*
+
+# Biến môi trường — .env.sample thì commit, .env thì không
 .env
 .env.*
 !.env.sample
+
+# Scratch của subagent-driven-development — không bao giờ commit
+.superpowers/
+
+# Cấu hình skill cục bộ của người dùng — không thuộc về repo
+.claude
+
+# Linh tinh
+*.orig
+*.rej

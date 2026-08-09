@@ -227,7 +227,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: không
-- Produces: Postgres 17 tại `localhost:5432`, database `bank`, superuser `postgres/postgres`; 5 schema `auth`, `customer`, `product`, `core_banking`, `notification`; 5 role `auth_svc`, `customer_svc`, `product_svc`, `core_svc`, `noti_svc`; Kafka tại `localhost:9092`; Redis tại `localhost:6379`. File `schema.sql` kết thúc bằng dòng đánh dấu `-- <<< HẾT KHỐI [1]` để các task sau biết chỗ append.
+- Produces: Postgres 17 tại `localhost:5432`, database `bank`, superuser `postgres/postgres`; 5 schema `auth`, `customer`, `product`, `core_banking`, `notification`; 5 role `auth_svc`, `customer_svc`, `product_svc`, `core_svc`, `noti_svc`; Kafka tại `localhost:9092`; Redis tại `localhost:6379`. File `schema.sql` kết thúc bằng dòng đánh dấu `-- <<< HẾT KHỐI [1]` để các task sau biết chỗ append. Kèm function dùng chung `public.set_updated_at()` (BEFORE UPDATE trigger của tám bảng có cột `updated_at` đều gọi nó) và `GRANT EXECUTE` cho cả năm role.
 
 - [ ] **Step 1: Viết `compose.yaml`**
 
@@ -251,7 +251,14 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./docs/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bank"]
+      # -h 127.0.0.1 KHÔNG thừa — bỏ nó đi là probe nói dối.
+      # Trong lúc initdb, docker-entrypoint.sh dựng một server TẠM bằng
+      # docker_temp_server_start() với `-c listen_addresses=''` (xem chính file đó
+      # trong image): server tạm nghe trên Unix socket nhưng KHÔNG nghe TCP.
+      # pg_isready không có -h thì đi qua Unix socket, nên nó báo "accepting
+      # connections" ngay khi server tạm còn sống — tức là TRƯỚC khi 01-schema.sql
+      # chạy xong. Ép qua TCP thì probe chỉ xanh được với server THẬT, sau initdb.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d bank"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -320,7 +327,9 @@ Expected: `0` — hoặc container không khởi động được vì `schema.sq
 --     dự thu lãi hằng ngày không mất số lẻ. currency CHAR(3) theo ISO-4217.
 --
 --  3. MỘT TÀI KHOẢN MỘT LOẠI TIỀN, MỘT BÚT TOÁN CÁC DÒNG CÙNG LOẠI TIỀN.
---     Không có FX trong phạm vi này — trigger cân đối sẽ từ chối bút toán trộn tiền.
+--     Không có FX trong phạm vi này. Trigger cân đối từ chối CẢ HAI vế: bút toán
+--     trộn nhiều loại tiền, VÀ dòng mang loại tiền khác với tài khoản nó hạch toán
+--     vào (vế thứ hai từng thiếu — bút toán USD vào tài khoản VND đi lọt sạch).
 --
 --  4. TIMESTAMPTZ CHO THỜI ĐIỂM, DATE CHO NGÀY NGHIỆP VỤ. value_date quyết định
 --     lãi, booking_date quyết định kỳ sổ — hai thứ khác nhau, đừng trộn.
@@ -401,6 +410,64 @@ ALTER USER noti_svc     SET search_path = notification;
 -- Chặn quyền mặc định trên public để không ai tạo bảng "tạm" ngoài schema của mình.
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
+-- ---------------------------------------------------------------------
+--  updated_at PHẢI DO DATABASE GIỮ
+--
+--  Tám bảng trong file này khai `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+--  DEFAULT chỉ chạy lúc INSERT. Không có gì cập nhật nó thì một cột tên updated_at
+--  thực chất là created_at thứ hai — và nó sai một cách IM LẶNG: không lỗi, không
+--  cảnh báo, chỉ là mọi con số đọc ra từ nó đều sai.
+--
+--  Cột này là HỢP ĐỒNG với phía tiêu thụ dữ liệu, không phải trang trí. CDC, đồng
+--  bộ tăng dần, job đối chiếu đều hỏi "có gì đổi sau mốc X" bằng đúng cột này. Một
+--  hàng bị sửa mà updated_at đứng yên thì không bao giờ lọt vào mẻ đồng bộ, và hai
+--  hệ thống trôi lệch nhau mà không ai nhìn thấy.
+--
+--  ĐẶT Ở DATABASE, KHÔNG Ở JPA @PreUpdate: chưa có entity nào tồn tại, và bất biến
+--  này phải đúng với MỌI thứ ghi vào bảng — batch job, script vá dữ liệu tay, psql
+--  lúc 2 giờ sáng — chứ không riêng đường đi qua Hibernate.
+--
+--  Hàm đặt ở schema public vì năm schema có năm owner khác nhau và không owner nào
+--  tạo được object trong schema của người khác; public là chỗ duy nhất cả năm role
+--  đều USAGE được. Ở trên chỉ REVOKE CREATE trên public chứ không REVOKE USAGE,
+--  nên các role vẫn gọi được hàm này.
+--
+--  HỆ QUẢ CÓ CHỦ ĐÍCH (đã kiểm): trigger GHI ĐÈ cả giá trị mà câu UPDATE tự đặt cho
+--  updated_at. `UPDATE ... SET updated_at = '2020-01-01'` vẫn ra now(). Đó đúng là ý
+--  nghĩa của "database sở hữu cột này" — không ai bịa được thời điểm sửa. Nếu có ngày
+--  cần nạp dữ liệu giữ nguyên updated_at gốc (di trú từ hệ thống cũ), phải DROP
+--  trigger, nạp, rồi tạo lại trong cùng một transaction, và đó là việc có chủ đích
+--  chứ không phải chuyện tình cờ làm được.
+--
+--  Dùng now() (thời điểm BẮT ĐẦU transaction) chứ không clock_timestamp(): mọi hàng
+--  sửa trong cùng một transaction mang đúng một mốc, khớp với DEFAULT now() của
+--  created_at. Phía đọc CDC nhờ đó thấy một transaction là một mốc thời gian.
+--
+--  KHÔNG dùng WHEN (OLD.* IS DISTINCT FROM NEW.*), nên một UPDATE không đổi gì vẫn
+--  đẩy updated_at và vẫn tạo một nhịp thừa cho CDC. Đã cân nhắc và CỐ Ý bỏ, không
+--  phải quên: Postgres từ chối thẳng mệnh đề đó trên core_banking.accounts —
+--    ERROR: BEFORE trigger's WHEN condition cannot reference NEW generated columns
+--  vì accounts có cột GENERATED available_balance (bảy bảng còn lại thì không).
+--  Gắn guard cho bảy bảng kia mà bỏ accounts sẽ tạo ra HAI ngữ nghĩa updated_at khác
+--  nhau trong cùng một database — đúng thứ tệ nhất cho phía tiêu thụ mà cột này sinh
+--  ra để phục vụ. Còn liệt kê tay từng cột riêng cho accounts thì mỗi cột thêm về sau
+--  sẽ lặng lẽ nằm ngoài guard, ngay trên bảng sổ cái. Chọn nhiễu ĐỀU thay vì nhiễu
+--  lệch. Nếu sau này bỏ cột GENERATED kia, hãy gắn guard cho cả tám bảng cùng lúc.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION public.set_updated_at() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
+
+-- Postgres mặc định đã cấp EXECUTE cho PUBLIC trên function mới. Khai tường minh
+-- để bất biến không phụ thuộc vào một mặc định mà ALTER DEFAULT PRIVILEGES ở môi
+-- trường khác có thể đã đổi.
+GRANT EXECUTE ON FUNCTION public.set_updated_at()
+    TO auth_svc, customer_svc, product_svc, core_svc, noti_svc;
+
 -- <<< HẾT KHỐI [1]
 ```
 
@@ -472,12 +539,13 @@ SET search_path = auth;
 
 CREATE TABLE users (
     id            BIGSERIAL    PRIMARY KEY,
-    username      VARCHAR(100) NOT NULL UNIQUE,
+    username      VARCHAR(100) NOT NULL,
     password_hash VARCHAR(100) NOT NULL,
     status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT ck_users_status CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
+    CONSTRAINT uq_users_username UNIQUE (username),
+    CONSTRAINT ck_users_status   CHECK (status IN ('ACTIVE', 'LOCKED', 'DISABLED'))
 );
 COMMENT ON COLUMN users.password_hash IS
     'BCrypt cho ra chuỗi 60 ký tự; để 100 phòng khi đổi sang argon2 (dài hơn)';
@@ -496,10 +564,11 @@ CREATE TABLE user_roles (
 CREATE TABLE refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    token_hash VARCHAR(64) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_refresh_tokens_hash UNIQUE (token_hash)
 );
 COMMENT ON COLUMN refresh_tokens.token_hash IS
     'Lưu HASH chứ không lưu token thô: lộ DB không đồng nghĩa lộ phiên đăng nhập';
@@ -519,6 +588,10 @@ CREATE TABLE login_audit (
 CREATE INDEX idx_refresh_user   ON refresh_tokens (user_id);
 CREATE INDEX idx_refresh_active ON refresh_tokens (expires_at) WHERE revoked_at IS NULL;
 CREATE INDEX idx_login_user_at  ON login_audit (username, at DESC);
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
@@ -681,6 +754,10 @@ CREATE INDEX idx_noti_pending  ON notifications (created_at) WHERE status = 'PEN
 CREATE INDEX idx_attempts_noti ON delivery_attempts (notification_id);
 CREATE INDEX idx_webhook_user  ON webhook_endpoints (user_id) WHERE active;
 
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_prefs_updated_at BEFORE UPDATE ON user_notification_preferences
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 RESET ROLE;
 SET search_path = public;
 
@@ -756,7 +833,7 @@ SET search_path = customer;
 
 CREATE TABLE customers (
     id              BIGSERIAL   PRIMARY KEY,
-    customer_number VARCHAR(20) NOT NULL UNIQUE,
+    customer_number VARCHAR(20) NOT NULL,
     user_id         BIGINT,
     customer_type   VARCHAR(20) NOT NULL,
     status          VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
@@ -764,6 +841,11 @@ CREATE TABLE customers (
     risk_rating     VARCHAR(10),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_customers_number    UNIQUE (customer_number),
+    -- Khoá phụ này tồn tại CHỈ để hai bảng chi tiết bên dưới FK vào được theo cặp
+    -- (id, customer_type). Nhờ nó, DB tự chặn việc gắn hồ sơ tổ chức cho khách
+    -- hàng cá nhân — mẫu "disjoint subtype" kinh điển của mô hình party.
+    CONSTRAINT uq_customers_id_type   UNIQUE (id, customer_type),
     CONSTRAINT ck_customers_type      CHECK (customer_type IN ('INDIVIDUAL', 'ORGANIZATION')),
     CONSTRAINT ck_customers_status    CHECK (status IN ('DRAFT', 'PENDING_KYC', 'ACTIVE', 'SUSPENDED', 'CLOSED')),
     CONSTRAINT ck_customers_kyc_level CHECK (kyc_level BETWEEN 0 AND 3),
@@ -778,8 +860,13 @@ COMMENT ON COLUMN customers.kyc_level IS
 
 -- Mô hình PARTY: bảng chung + bảng chi tiết theo loại. Thay cho một bảng 40 cột
 -- mà nửa số cột luôn NULL tùy loại khách hàng.
+-- customer_type lặp lại ở bảng con KHÔNG phải dư thừa: nó là nửa còn lại của FK
+-- theo cặp. CHECK ghim nó bằng 'INDIVIDUAL', FK bắt cặp phải khớp customers,
+-- nên một khách hàng ORGANIZATION không thể có dòng ở đây. DB tự chặn, không
+-- cần trigger, không đẩy bất biến sang code chưa viết.
 CREATE TABLE individual_details (
-    customer_id    BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id    BIGINT       PRIMARY KEY,
+    customer_type  VARCHAR(20)  NOT NULL DEFAULT 'INDIVIDUAL',
     first_name     VARCHAR(100) NOT NULL,
     last_name      VARCHAR(100) NOT NULL,
     date_of_birth  DATE         NOT NULL,
@@ -787,23 +874,37 @@ CREATE TABLE individual_details (
     nationality    CHAR(2)      NOT NULL DEFAULT 'VN',
     occupation     VARCHAR(100),
     marital_status VARCHAR(20),
+    CONSTRAINT fk_individual_customer FOREIGN KEY (customer_id, customer_type)
+        REFERENCES customers (id, customer_type) ON DELETE CASCADE,
+    CONSTRAINT ck_individual_type    CHECK (customer_type = 'INDIVIDUAL'),
     CONSTRAINT ck_individual_gender  CHECK (gender IS NULL OR gender IN ('MALE', 'FEMALE', 'OTHER')),
     CONSTRAINT ck_individual_marital CHECK (marital_status IS NULL OR marital_status IN ('SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED')),
     CONSTRAINT ck_individual_dob     CHECK (date_of_birth < CURRENT_DATE)
 );
 
 CREATE TABLE organization_details (
-    customer_id        BIGINT       PRIMARY KEY REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id        BIGINT       PRIMARY KEY,
+    customer_type      VARCHAR(20)  NOT NULL DEFAULT 'ORGANIZATION',
     legal_name         VARCHAR(200) NOT NULL,
     trade_name         VARCHAR(200),
-    tax_code           VARCHAR(20)  NOT NULL UNIQUE,
+    tax_code           VARCHAR(20)  NOT NULL,
     incorporation_date DATE,
-    business_type      VARCHAR(100)
+    business_type      VARCHAR(100),
+    CONSTRAINT fk_organization_customer FOREIGN KEY (customer_id, customer_type)
+        REFERENCES customers (id, customer_type) ON DELETE CASCADE,
+    CONSTRAINT ck_organization_type     CHECK (customer_type = 'ORGANIZATION'),
+    CONSTRAINT uq_organization_tax_code UNIQUE (tax_code)
 );
 
+-- KHÔNG CASCADE. Bốn bảng tiếp theo (giấy tờ, KYC, tài liệu KYC, đánh giá rủi ro)
+-- là BẰNG CHỨNG TUÂN THỦ: chúng phải sống sót qua việc đóng hồ sơ khách hàng, vì
+-- nghĩa vụ lưu trữ KYC/AML không kết thúc khi quan hệ với khách hàng kết thúc.
+-- Hệ quả cố ý: `DELETE FROM customers` sẽ bị FK từ chối. Đóng khách hàng đi bằng
+-- `status = 'CLOSED'`, không xoá vật lý. Nếu thật sự phải xoá (yêu cầu xoá dữ liệu
+-- cá nhân), đó là một quy trình có phê duyệt, không phải một câu lệnh DELETE.
 CREATE TABLE customer_identifications (
     id           BIGSERIAL    PRIMARY KEY,
-    customer_id  BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id  BIGINT       NOT NULL REFERENCES customers (id),
     id_type      VARCHAR(30)  NOT NULL,
     id_number    VARCHAR(50)  NOT NULL,
     issued_date  DATE,
@@ -854,7 +955,7 @@ COMMENT ON COLUMN customer_contacts.verified_at IS
 -- không phải "đã duyệt một lần là xong đời".
 CREATE TABLE kyc_verifications (
     id            BIGSERIAL    PRIMARY KEY,
-    customer_id   BIGINT       NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id   BIGINT       NOT NULL REFERENCES customers (id),
     level         SMALLINT     NOT NULL,
     status        VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     method        VARCHAR(20)  NOT NULL,
@@ -876,7 +977,7 @@ COMMENT ON COLUMN kyc_verifications.decided_by IS
 
 CREATE TABLE kyc_documents (
     id                  BIGSERIAL    PRIMARY KEY,
-    kyc_verification_id BIGINT       NOT NULL REFERENCES kyc_verifications (id) ON DELETE CASCADE,
+    kyc_verification_id BIGINT       NOT NULL REFERENCES kyc_verifications (id),
     doc_type            VARCHAR(50)  NOT NULL,
     storage_key         VARCHAR(500) NOT NULL,
     checksum            VARCHAR(64)  NOT NULL,
@@ -891,7 +992,7 @@ COMMENT ON COLUMN kyc_documents.checksum IS
 -- "tại thời điểm mở tài khoản, khách này được đánh giá thế nào".
 CREATE TABLE customer_risk_assessments (
     id          BIGSERIAL   PRIMARY KEY,
-    customer_id BIGINT      NOT NULL REFERENCES customers (id) ON DELETE CASCADE,
+    customer_id BIGINT      NOT NULL REFERENCES customers (id),
     rating      VARCHAR(10) NOT NULL,
     score       INT         NOT NULL,
     reason      JSONB,
@@ -921,12 +1022,22 @@ CREATE INDEX idx_customers_user      ON customers (user_id);
 CREATE INDEX idx_customers_status    ON customers (status);
 CREATE INDEX idx_ident_customer      ON customer_identifications (customer_id);
 CREATE INDEX idx_address_customer    ON customer_addresses (customer_id);
+-- Mỗi khách hàng, mỗi loại địa chỉ, tại một thời điểm chỉ có MỘT dòng đang hiệu lực.
+-- Không có ràng buộc này thì hai dòng cùng valid_to IS NULL là hợp lệ với DB, và
+-- truy vấn "địa chỉ tại ngày X" không còn đảm bảo trả về đúng một kết quả — đúng
+-- cái làm hỏng việc in sao kê theo địa chỉ tại kỳ đó.
+CREATE UNIQUE INDEX uq_address_current ON customer_addresses (customer_id, address_type)
+    WHERE valid_to IS NULL;
 CREATE INDEX idx_contact_customer    ON customer_contacts (customer_id);
 CREATE INDEX idx_kyc_customer        ON kyc_verifications (customer_id, submitted_at DESC);
 CREATE INDEX idx_kyc_open            ON kyc_verifications (submitted_at) WHERE status IN ('PENDING', 'IN_REVIEW');
 CREATE INDEX idx_kycdoc_verification ON kyc_documents (kyc_verification_id);
 CREATE INDEX idx_risk_customer       ON customer_risk_assessments (customer_id, assessed_at DESC);
 CREATE INDEX idx_cust_outbox_unpub   ON outbox (created_at) WHERE published_at IS NULL;
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON customers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
@@ -959,6 +1070,41 @@ INSERT INTO customer.customer_identifications (customer_id, id_type, id_number)
 ```
 
 Expected: FAIL với `duplicate key value violates unique constraint "uq_ident"`.
+
+**Bẫy:** nhiều câu lệnh ngăn cách bằng dấu `;` trong **một** `psql -c` đi qua simple query protocol và thành **một transaction ngầm** — câu cuối fail sẽ rollback cả hai câu INSERT trước đó. Step 4b cần các dòng đó tồn tại, nên hãy chạy từng câu bằng một `-c` riêng (mỗi lệnh tự commit), hoặc chấp nhận rằng phải insert lại trước khi sang Step 4b.
+
+- [ ] **Step 4b: Kiểm chứng ba ràng buộc nghiệp vụ vừa thêm**
+
+Mô hình disjoint subtype — khách hàng cá nhân không thể có hồ sơ tổ chức:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO customer.organization_details (customer_id, legal_name, tax_code)
+  SELECT id, 'Cty TNHH Sai', '0101234567' FROM customer.customers WHERE customer_number='CIF001';"
+```
+
+Expected: FAIL với `violates foreign key constraint "fk_organization_customer"` — `CIF001` là `INDIVIDUAL`, cặp `(id, 'ORGANIZATION')` không tồn tại trong `customers`.
+
+Bằng chứng tuân thủ không bị xoá theo khách hàng:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c \
+  "DELETE FROM customer.customers WHERE customer_number='CIF001';"
+```
+
+Expected: FAIL với `violates foreign key constraint` trên `customer_identifications` — đúng như thiết kế: đóng khách hàng bằng `status='CLOSED'`, không xoá vật lý.
+
+Một địa chỉ hiện tại cho mỗi loại:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO customer.customer_addresses (customer_id, address_type, line1)
+  SELECT id, 'PERMANENT', 'Số 1 Đường A' FROM customer.customers WHERE customer_number='CIF002';
+INSERT INTO customer.customer_addresses (customer_id, address_type, line1)
+  SELECT id, 'PERMANENT', 'Số 2 Đường B' FROM customer.customers WHERE customer_number='CIF002';"
+```
+
+Expected: dòng đầu thành công, dòng thứ hai FAIL với `duplicate key value violates unique constraint "uq_address_current"`.
 
 - [ ] **Step 5: Reset lại DB cho sạch dữ liệu thử**
 
@@ -1013,15 +1159,25 @@ Expected: `0`.
 --     Lãi suất, biểu phí, hạn mức, điều kiện mở: tất cả là DỮ LIỆU, không phải
 --     hằng số trong code. Đổi biểu phí không được phép là một lần deploy.
 --
---     Mọi bảng đều có effective_from/effective_to: đổi thì THÊM DÒNG, không sửa
---     dòng cũ — nếu không, sao kê tháng trước tính lại sẽ ra số khác.
+--     Mọi bảng GIÁ TRỊ (rates, fees, limits, gl_mappings) đều có effective_from/
+--     effective_to: đổi thì THÊM DÒNG, không sửa dòng cũ — nếu không, sao kê tháng
+--     trước tính lại sẽ ra số khác. Riêng product_eligibility_rules CỐ Ý không có:
+--     điều kiện mở tài khoản chỉ được đánh giá tại thời điểm mở, không cần tra ngược.
+--
+--     Ràng buộc "không hai dòng cùng hiệu lực" KHÔNG phải UNIQUE trên effective_from
+--     — cái đó chỉ chặn trùng đúng ngày bắt đầu. Phải là EXCLUDE trên khoảng ngày.
 -- ---------------------------------------------------------------------
+
+-- btree_gist cho phép trộn toán tử '=' (trên BIGINT, VARCHAR) với '&&' (trên
+-- daterange) trong cùng một EXCLUDE. Chạy dưới quyền superuser, TRƯỚC SET ROLE.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 SET ROLE product_svc;
 SET search_path = product;
 
 CREATE TABLE products (
     id             BIGSERIAL     PRIMARY KEY,
-    product_code   VARCHAR(30)   NOT NULL UNIQUE,
+    product_code   VARCHAR(30)   NOT NULL,
     name           VARCHAR(200)  NOT NULL,
     category       VARCHAR(30)   NOT NULL,
     currency       CHAR(3)       NOT NULL DEFAULT 'VND',
@@ -1031,6 +1187,7 @@ CREATE TABLE products (
     effective_to   DATE,
     created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_products_code     UNIQUE (product_code),
     CONSTRAINT ck_products_category CHECK (category IN ('CURRENT_ACCOUNT', 'SAVINGS_ACCOUNT', 'TERM_DEPOSIT')),
     CONSTRAINT ck_products_status   CHECK (status IN ('DRAFT', 'ACTIVE', 'RETIRED')),
     CONSTRAINT ck_products_period   CHECK (effective_to IS NULL OR effective_to > effective_from)
@@ -1049,12 +1206,41 @@ CREATE TABLE product_interest_rates (
     CONSTRAINT ck_rate_tier   CHECK (tier_to IS NULL OR tier_to > tier_from),
     CONSTRAINT ck_rate_value  CHECK (annual_rate >= 0 AND annual_rate < 1),
     CONSTRAINT ck_rate_term   CHECK (term_months IS NULL OR term_months > 0),
-    CONSTRAINT ck_rate_period CHECK (effective_to IS NULL OR effective_to > effective_from)
+    CONSTRAINT ck_rate_period CHECK (effective_to IS NULL OR effective_to > effective_from),
+    -- Bảng GIÁ TRỊ cuối cùng còn thiếu lưới chống chồng lấn (fees, limits, gl_mappings
+    -- đã có từ đầu) — khối comment mở đầu schema [4] vẫn nói cả bốn bảng đều có, nên
+    -- trước ràng buộc này chính file tự mâu thuẫn với mình. Thiếu nó thì hai dòng cùng
+    -- sản phẩm, cùng bậc, cùng kỳ hạn, cùng ngày hiệu lực nhưng KHÁC lãi suất là hợp lệ
+    -- với DB, và câu "áp lãi suất nào" được trả lời bằng thứ tự hàng trả về — tức là
+    -- không trả lời được.
+    --
+    -- Hai chỗ dễ sập bẫy, cả hai xử lý ngay tại đây:
+    --   1. BẬC cũng là một KHOẢNG. Phải xét chồng lấn trên numrange(tier_from, tier_to)
+    --      chứ không phải '=' trên từng cột; nếu không, bậc 0-100tr và bậc 50-200tr của
+    --      cùng một sản phẩm vẫn lọt qua.
+    --   2. term_months NULL-ABLE, mà 'WITH =' KHÔNG BAO GIỜ khớp NULL với NULL. Để trần
+    --      thì mọi dòng không kỳ hạn — chính là toàn bộ CA và SA — vĩnh viễn không xung
+    --      đột với nhau, đúng những dòng cần bảo vệ nhất lại lọt hết. COALESCE về -1 kéo
+    --      NULL thành giá trị so sánh được; -1 an toàn vì ck_rate_term đã bắt
+    --      term_months > 0 nên không dòng thật nào mang -1.
+    --
+    -- KHÔNG DEFERRABLE — giống hệt ba ràng buộc ex_* anh em, nên hành vi nhất quán
+    -- trong cả file. Hệ quả thực hành khi đổi lãi suất, viết ra đây vì chưa chỗ nào
+    -- ghi: phải ĐÓNG dòng cũ TRƯỚC (UPDATE effective_to) rồi mới INSERT dòng mới.
+    -- Làm ngược thứ tự thì ngay tại câu INSERT hai khoảng còn phủ nhau và câu lệnh bị
+    -- chặn, dù trạng thái cuối transaction hoàn toàn hợp lệ.
+    CONSTRAINT ex_rate_overlap EXCLUDE USING gist (
+        product_id                                    WITH =,
+        COALESCE(term_months, -1)                     WITH =,
+        numrange(tier_from, tier_to, '[)')            WITH &&,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON COLUMN product_interest_rates.annual_rate IS
     'Tỉ lệ thập phân: 0.045000 = 4.5%/năm. CHECK < 1 chặn lỗi nhập 4.5 thay vì 0.045';
 COMMENT ON COLUMN product_interest_rates.tier_to IS
     'NULL = bậc cao nhất, không giới hạn trên';
+COMMENT ON COLUMN product_interest_rates.term_months IS
+    'NULL với sản phẩm không kỳ hạn. BẤT BIẾN DO ỨNG DỤNG GIỮ: TERM_DEPOSIT phải có term_months, CURRENT/SAVINGS phải không — CHECK không với sang bảng products được nên DB không chặn nổi';
 
 CREATE TABLE product_fees (
     id             BIGSERIAL     PRIMARY KEY,
@@ -1069,16 +1255,34 @@ CREATE TABLE product_fees (
     currency       CHAR(3)       NOT NULL DEFAULT 'VND',
     effective_from DATE          NOT NULL DEFAULT CURRENT_DATE,
     effective_to   DATE,
-    CONSTRAINT ck_fee_type  CHECK (fee_type IN ('FLAT', 'PERCENT', 'TIERED')),
+    -- TIERED CỐ Ý KHÔNG có trong danh sách: phí bậc thang cần một bảng
+    -- product_fee_tiers để chứa các bậc, mà bảng đó chưa tồn tại. Thêm một enum
+    -- value không dùng được chỉ tạo ra một lỗ trong ck_fee_shape. Khi nào thực sự
+    -- cần phí bậc thang thì thêm bảng tier TRƯỚC, rồi mới mở enum.
+    CONSTRAINT ck_fee_type  CHECK (fee_type IN ('FLAT', 'PERCENT')),
     CONSTRAINT ck_fee_event CHECK (charge_event IN (
         'ACCOUNT_OPEN', 'ACCOUNT_CLOSE', 'MONTHLY_MAINTENANCE',
         'INTERNAL_TRANSFER', 'EXTERNAL_TRANSFER', 'ATM_WITHDRAWAL', 'STATEMENT_REQUEST')),
     CONSTRAINT ck_fee_shape CHECK (
            (fee_type = 'FLAT'    AND amount  IS NOT NULL AND percent IS NULL)
-        OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)
-        OR (fee_type = 'TIERED')),
+        OR (fee_type = 'PERCENT' AND percent IS NOT NULL AND amount  IS NULL)),
     CONSTRAINT ck_fee_bounds CHECK (min_amount IS NULL OR max_amount IS NULL OR max_amount >= min_amount),
-    CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from)
+    -- Khoảng hiệu lực RỖNG (effective_to = effective_from) phải chặn ở đây, và
+    -- ex_fee_overlap bên dưới KHÔNG gánh thay được: daterange rỗng không '&&' với bất
+    -- kỳ khoảng nào, kể cả chính nó, nên EXCLUDE nhìn dòng đó là hoàn toàn vô hại.
+    -- Thực tế đó là một biểu phí không bao giờ có hiệu lực — phí âm thầm không thu,
+    -- không lỗi, không cảnh báo. Cùng khuôn với ck_products_period / ck_rate_period /
+    -- ck_glmap_period, ba bảng anh em đã có từ đầu.
+    CONSTRAINT ck_fee_period CHECK (effective_to IS NULL OR effective_to > effective_from),
+    CONSTRAINT uq_fee UNIQUE (product_id, fee_code, effective_from),
+    -- Hai biểu phí cùng fee_code không được PHỦ NHAU về thời gian. UNIQUE trên
+    -- effective_from chỉ chặn trùng đúng ngày bắt đầu, không chặn được
+    -- (01/01 -> 31/12) chồng lên (01/06 -> mở) — và khi đó không ai trả lời được
+    -- tháng 6 thu phí theo dòng nào.
+    CONSTRAINT ex_fee_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        fee_code   WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON CONSTRAINT ck_fee_shape ON product_fees IS
     'FLAT dùng amount, PERCENT dùng percent — không cho điền cả hai rồi cãi nhau cái nào thắng';
@@ -1097,7 +1301,23 @@ CREATE TABLE product_limits (
     CONSTRAINT ck_limit_scope   CHECK (scope IN ('PER_TRANSACTION', 'PER_DAY', 'PER_MONTH')),
     CONSTRAINT ck_limit_channel CHECK (channel IN ('ANY', 'INTERNET', 'MOBILE', 'ATM', 'BRANCH')),
     CONSTRAINT ck_limit_value   CHECK (max_amount IS NOT NULL OR max_count IS NOT NULL),
-    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, effective_from)
+    -- Cùng lý do như ck_fee_period: khoảng rỗng lọt qua EXCLUDE vì daterange rỗng
+    -- không '&&' với gì cả. Ở bảng này hậu quả nặng hơn phí — một hạn mức không bao
+    -- giờ có hiệu lực nghĩa là KHÔNG có hạn mức, tức là chốt chặn số tiền bị mở toang
+    -- mà nhìn vào bảng vẫn thấy có dòng hạn mức nằm đó.
+    CONSTRAINT ck_limit_period  CHECK (effective_to IS NULL OR effective_to > effective_from),
+    -- channel PHẢI nằm trong khoá: cùng một limit_code hoàn toàn có thể có mức khác
+    -- nhau theo kênh (chuyển qua mobile hạn mức thấp hơn qua quầy). Thiếu channel ở
+    -- đây thì uq_limit mâu thuẫn với ex_limit_overlap ngay bên dưới, và seed hai hạn
+    -- mức TRF_PER_TXN khác kênh sẽ không insert nổi.
+    CONSTRAINT uq_limit UNIQUE (product_id, limit_code, channel, effective_from),
+    -- Cùng lý do như ex_fee_overlap: hai hạn mức cùng mã không được phủ nhau.
+    -- channel nằm trong khoá vì cùng một limit_code có thể khác nhau theo kênh.
+    CONSTRAINT ex_limit_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        limit_code WITH =,
+        channel    WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON TABLE product_limits IS
     'Khuôn hạn mức theo sản phẩm. Mức đã dùng thực tế nằm ở core_banking.transfer_limit_usage';
@@ -1117,13 +1337,24 @@ CREATE TABLE product_eligibility_rules (
 -- toán vào GL nào, lãi phải trả vào GL nào, phí thu vào GL nào.
 -- Không có bảng này thì mã GL bị hardcode trong code — lỗi kinh điển của
 -- core banking tự viết, và là thứ khiến việc thêm sản phẩm mới phải sửa code.
+-- CÓ effective_from/effective_to, và đó là điểm quan trọng nhất của bảng này.
+-- Nếu chỉ UNIQUE (product_id, purpose) thì đổi mã GL buộc phải UPDATE dòng cũ —
+-- và ngay lúc đó mất khả năng trả lời "giao dịch tháng trước hạch toán vào tài
+-- khoản nào". Với sổ cái, mất lịch sử ánh xạ là mất khả năng đối chiếu kỳ cũ.
 CREATE TABLE product_gl_mappings (
-    id         BIGSERIAL   PRIMARY KEY,
-    product_id BIGINT      NOT NULL REFERENCES products (id) ON DELETE CASCADE,
-    purpose    VARCHAR(30) NOT NULL,
-    gl_code    VARCHAR(20) NOT NULL,
+    id             BIGSERIAL   PRIMARY KEY,
+    product_id     BIGINT      NOT NULL REFERENCES products (id) ON DELETE CASCADE,
+    purpose        VARCHAR(30) NOT NULL,
+    gl_code        VARCHAR(20) NOT NULL,
+    effective_from DATE        NOT NULL DEFAULT CURRENT_DATE,
+    effective_to   DATE,
     CONSTRAINT ck_glmap_purpose CHECK (purpose IN ('PRINCIPAL', 'INTEREST_PAYABLE', 'INTEREST_EXPENSE', 'FEE_INCOME')),
-    CONSTRAINT uq_glmap UNIQUE (product_id, purpose)
+    CONSTRAINT ck_glmap_period  CHECK (effective_to IS NULL OR effective_to > effective_from),
+    CONSTRAINT uq_glmap UNIQUE (product_id, purpose, effective_from),
+    CONSTRAINT ex_glmap_overlap EXCLUDE USING gist (
+        product_id WITH =,
+        purpose    WITH =,
+        daterange(effective_from, effective_to, '[)') WITH &&)
 );
 COMMENT ON COLUMN product_gl_mappings.gl_code IS
     'Tham chiếu MỀM sang core_banking.gl_accounts.gl_code — không FK xuyên schema';
@@ -1147,6 +1378,10 @@ CREATE INDEX idx_limits_product       ON product_limits (product_id, scope, chan
 CREATE INDEX idx_rules_product        ON product_eligibility_rules (product_id);
 CREATE INDEX idx_glmap_product        ON product_gl_mappings (product_id);
 CREATE INDEX idx_prod_outbox_unpub    ON outbox (created_at) WHERE published_at IS NULL;
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 RESET ROLE;
 SET search_path = public;
@@ -1186,6 +1421,33 @@ INSERT INTO product.product_interest_rates (product_id, annual_rate)
 ```
 
 Expected: FAIL với `violates check constraint "ck_rate_value"` — đây chính là lỗi nhập `4.5` thay vì `0.045` mà constraint sinh ra để chặn.
+
+- [ ] **Step 4b: Kiểm chứng EXCLUDE chặn biểu phí chồng lấn**
+
+Chạy từng lệnh bằng một `-c` riêng (nhiều lệnh trong một `-c` là một transaction ngầm, lệnh cuối fail sẽ rollback cả lô):
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO product.product_fees (product_id, fee_code, fee_type, amount, charge_event, effective_from, effective_to)
+  SELECT id, 'MAINT_MONTHLY', 'FLAT', 11000, 'MONTHLY_MAINTENANCE', DATE '2026-01-01', DATE '2026-12-31'
+  FROM product.products WHERE product_code='TMP';"
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO product.product_fees (product_id, fee_code, fee_type, amount, charge_event, effective_from, effective_to)
+  SELECT id, 'MAINT_MONTHLY', 'FLAT', 15000, 'MONTHLY_MAINTENANCE', DATE '2026-06-01', NULL
+  FROM product.products WHERE product_code='TMP';"
+```
+
+Expected: lệnh đầu thành công; lệnh thứ hai FAIL với `conflicting key value violates exclusion constraint "ex_fee_overlap"` — hai biểu phí cùng `MAINT_MONTHLY` phủ nhau tháng 6–12.
+
+Kiểm luôn `TIERED` đã bị loại khỏi enum:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO product.product_fees (product_id, fee_code, fee_type, charge_event)
+  SELECT id, 'TIER_TEST', 'TIERED', 'ACCOUNT_OPEN' FROM product.products WHERE product_code='TMP';"
+```
+
+Expected: FAIL với `violates check constraint` — tên constraint là **`ck_fee_shape` hoặc `ck_fee_type`**, cả hai đều chấp nhận được. Dòng đó vi phạm cả hai (`TIERED` không nằm trong enum, và cũng không khớp nhánh `FLAT` lẫn `PERCENT` của `ck_fee_shape`), và Postgres không đảm bảo báo cái nào trước. Điều cần chứng minh là INSERT bị từ chối, không phải nó bị từ chối bởi constraint nào.
 
 - [ ] **Step 5: Reset lại DB cho sạch dữ liệu thử**
 
@@ -1253,7 +1515,7 @@ SET search_path = core_banking;
 -- cơ bản nhất của core banking.
 CREATE TABLE gl_accounts (
     id             BIGSERIAL    PRIMARY KEY,
-    gl_code        VARCHAR(20)  NOT NULL UNIQUE,
+    gl_code        VARCHAR(20)  NOT NULL,
     name           VARCHAR(200) NOT NULL,
     account_class  VARCHAR(20)  NOT NULL,
     normal_balance VARCHAR(6)   NOT NULL,
@@ -1262,6 +1524,9 @@ CREATE TABLE gl_accounts (
     currency       CHAR(3)      NOT NULL DEFAULT 'VND',
     status         VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- UNIQUE đặt tên tường minh: accounts.gl_code và journal_lines.gl_code đều
+    -- FK vào cột này, nên nó là một hợp đồng công khai chứ không phải chi tiết nội bộ.
+    CONSTRAINT uq_gl_code   UNIQUE (gl_code),
     CONSTRAINT ck_gl_class  CHECK (account_class IN ('ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE')),
     CONSTRAINT ck_gl_normal CHECK (normal_balance IN ('DEBIT', 'CREDIT')),
     CONSTRAINT ck_gl_status CHECK (status IN ('ACTIVE', 'CLOSED')),
@@ -1269,14 +1534,24 @@ CREATE TABLE gl_accounts (
     -- TÀI SẢN và CHI PHÍ tăng bên NỢ; NỢ PHẢI TRẢ, VỐN và THU NHẬP tăng bên CÓ.
     CONSTRAINT ck_gl_class_normal CHECK (
            (account_class IN ('ASSET', 'EXPENSE')              AND normal_balance = 'DEBIT')
-        OR (account_class IN ('LIABILITY', 'EQUITY', 'INCOME') AND normal_balance = 'CREDIT'))
+        OR (account_class IN ('LIABILITY', 'EQUITY', 'INCOME') AND normal_balance = 'CREDIT')),
+    -- Một tài khoản không thể là cha của chính nó. FK ở trên chỉ bắt parent_gl_code
+    -- phải TỒN TẠI — mà chính nó thì luôn tồn tại, nên
+    -- `UPDATE gl_accounts SET parent_gl_code = '1010' WHERE gl_code = '1010'` đi lọt
+    -- nếu thiếu CHECK này, và mọi phép cộng dồn lên cây tài khoản sẽ lặp vô hạn.
+    --
+    -- PHẠM VI CÓ CHỦ ĐÍCH: chỉ chặn vòng ĐỘ DÀI 1. Vòng dài hơn (A -> B -> A) CỐ Ý
+    -- KHÔNG chặn — bắt nó cần trigger đệ quy chạy trên mỗi lần ghi, và đó là quyết
+    -- định đã cân nhắc rồi bỏ. Hệ quả bắt buộc phải nhớ: mọi lần duyệt cây tài khoản
+    -- về sau PHẢI viết bằng `WITH RECURSIVE ... CYCLE`, đừng giả định cây sạch chu trình.
+    CONSTRAINT ck_gl_parent_not_self CHECK (parent_gl_code IS NULL OR parent_gl_code <> gl_code)
 );
 COMMENT ON COLUMN gl_accounts.is_postable IS
     'FALSE = tài khoản tổng hợp, chỉ để gom số. Hạch toán thẳng vào nó là sai';
 
 CREATE TABLE accounts (
     id                  BIGSERIAL     PRIMARY KEY,
-    account_number      VARCHAR(20)   NOT NULL UNIQUE,
+    account_number      VARCHAR(20)   NOT NULL,
     product_code        VARCHAR(30)   NOT NULL,
     primary_customer_id BIGINT        NOT NULL,
     currency            CHAR(3)       NOT NULL DEFAULT 'VND',
@@ -1291,12 +1566,14 @@ CREATE TABLE accounts (
     closed_at           TIMESTAMPTZ,
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT uq_accounts_number    UNIQUE (account_number),
     CONSTRAINT ck_accounts_status    CHECK (status IN ('PENDING', 'ACTIVE', 'DORMANT', 'FROZEN', 'CLOSED')),
     CONSTRAINT ck_accounts_hold      CHECK (hold_amount >= 0),
     CONSTRAINT ck_accounts_overdraft CHECK (overdraft_limit >= 0),
-    -- Viết bằng biểu thức GỐC chứ không tham chiếu cột available_balance:
-    -- Postgres hạn chế dùng cột GENERATED trong ràng buộc, còn biểu thức gốc
-    -- thì luôn hợp lệ và cho ra đúng cùng một ý nghĩa.
+    -- Viết bằng biểu thức GỐC chứ không tham chiếu cột available_balance.
+    -- (Postgres CHO PHÉP CHECK tham chiếu cột GENERATED STORED — đã kiểm chứng.)
+    -- Lý do là tính độc lập: ràng buộc đọc được mà không cần biết
+    -- available_balance được định nghĩa thế nào, và không phụ thuộc thứ tự tính cột.
     CONSTRAINT ck_accounts_available CHECK (ledger_balance - hold_amount >= -overdraft_limit),
     CONSTRAINT ck_accounts_closed    CHECK (status <> 'CLOSED' OR closed_at IS NOT NULL)
 );
@@ -1347,7 +1624,11 @@ CREATE TABLE account_holds (
     CONSTRAINT ck_hold_amount   CHECK (amount > 0),
     CONSTRAINT ck_hold_reason   CHECK (reason IN ('TRANSFER', 'CARD_AUTH', 'LEGAL', 'FEE')),
     CONSTRAINT ck_hold_status   CHECK (status IN ('ACTIVE', 'RELEASED', 'CAPTURED', 'EXPIRED')),
-    CONSTRAINT ck_hold_released CHECK (status = 'ACTIVE' OR released_at IS NOT NULL)
+    CONSTRAINT ck_hold_released CHECK (status = 'ACTIVE' OR released_at IS NOT NULL),
+    -- Chỉ phong toả theo lệnh cơ quan (LEGAL) mới được vô hạn. Mọi hold còn lại
+    -- BẮT BUỘC có hạn — không có expires_at thì job quét (đi qua idx_holds_expiry)
+    -- không nhìn thấy nó, và tiền của khách bị treo vĩnh viễn không đường về.
+    CONSTRAINT ck_hold_expiry   CHECK (reason = 'LEGAL' OR expires_at IS NOT NULL)
 );
 COMMENT ON COLUMN account_holds.status IS
     'CAPTURED = đã chuyển thành bút toán thật. RELEASED = nhả không hạch toán. EXPIRED = quá hạn, job quét nhả';
@@ -1360,6 +1641,10 @@ CREATE INDEX idx_holders_customer  ON account_holders (customer_id);
 -- một cho "tổng tiền treo của tài khoản này", một cho job quét hold quá hạn.
 CREATE INDEX idx_holds_active ON account_holds (account_id) WHERE status = 'ACTIVE';
 CREATE INDEX idx_holds_expiry ON account_holds (expires_at) WHERE status = 'ACTIVE';
+
+-- updated_at do DB giữ (xem khối [1]). Bỏ trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_accounts_updated_at BEFORE UPDATE ON accounts
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- <<< HẾT KHỐI [5a]
 ```
@@ -1418,6 +1703,24 @@ INSERT INTO core_banking.account_holders (account_id, customer_id, holder_role)
 
 Expected: FAIL với `duplicate key value violates unique constraint "uq_account_one_primary"`.
 
+- [ ] **Step 6b: Kiểm chứng hold bắt buộc có hạn, trừ LEGAL**
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO core_banking.account_holds (account_id, amount, reason)
+  SELECT id, 50000, 'CARD_AUTH' FROM core_banking.accounts WHERE account_number='0000000001';"
+```
+
+Expected: FAIL với `violates check constraint "ck_hold_expiry"` — hold thẻ không hạn là tiền treo vĩnh viễn.
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO core_banking.account_holds (account_id, amount, reason)
+  SELECT id, 50000, 'LEGAL' FROM core_banking.accounts WHERE account_number='0000000001';"
+```
+
+Expected: thành công — phong toả theo lệnh cơ quan đúng là không có hạn định trước.
+
 - [ ] **Step 7: Reset lại DB cho sạch dữ liệu thử**
 
 ```bash
@@ -1450,7 +1753,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `gl_accounts.gl_code`, `accounts.id` từ Task 7
-- Produces: `core_banking.journal_entries(id BIGSERIAL, entry_reference VARCHAR(40) UNIQUE)` — Task 9 FK vào `journal_entries.id` từ `transfers`, `interest_accruals`, `fee_charges`. `core_banking.journal_lines` (partition theo tháng). `core_banking.account_balance_snapshots`. Function `core_banking.assert_journal_balanced()` và constraint trigger `trg_journal_balanced`.
+- Produces: `core_banking.journal_entries(id BIGSERIAL, entry_reference VARCHAR(40) UNIQUE)` — Task 9 FK vào `journal_entries.id` từ `transfers`, `interest_accruals`, `fee_charges`. `core_banking.journal_lines` (partition theo tháng). `core_banking.account_balance_snapshots`. Function `core_banking.assert_journal_balanced()` và constraint trigger `trg_journal_balanced`; function `core_banking.assert_entry_not_committed()` và trigger `trg_journal_lines_same_txn` (chặn chèn dòng vào bút toán đã commit); unique index `uq_journal_one_reversal` (một bút toán chỉ được đảo một lần).
 
 **Đây là task quan trọng nhất của phần database.** Nó kiểm chứng quyết định DB2 — điều mà spec đã ghi rõ là *chưa* được xác minh.
 
@@ -1481,7 +1784,7 @@ Expected: `0`.
 
 CREATE TABLE journal_entries (
     id                   BIGSERIAL    PRIMARY KEY,
-    entry_reference      VARCHAR(40)  NOT NULL UNIQUE,
+    entry_reference      VARCHAR(40)  NOT NULL,
     transaction_type     VARCHAR(20)  NOT NULL,
     source_type          VARCHAR(30),
     source_id            VARCHAR(100),
@@ -1491,6 +1794,8 @@ CREATE TABLE journal_entries (
     description          VARCHAR(500),
     reversal_of_entry_id BIGINT       REFERENCES journal_entries (id),
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    created_txid         xid8         NOT NULL DEFAULT pg_current_xact_id(),
+    CONSTRAINT uq_journal_reference UNIQUE (entry_reference),
     CONSTRAINT ck_journal_txn_type CHECK (transaction_type IN (
         'TRANSFER', 'FEE', 'INTEREST', 'REVERSAL', 'ADJUSTMENT', 'OPENING')),
     -- REVERSAL bắt buộc trỏ về bản gốc; loại khác bắt buộc không trỏ.
@@ -1504,6 +1809,26 @@ COMMENT ON COLUMN journal_entries.booking_date IS
     'NGÀY HẠCH TOÁN — quyết định bút toán rơi vào kỳ sổ nào';
 COMMENT ON COLUMN journal_entries.reversal_of_entry_id IS
     'Sổ cái APPEND-ONLY: sai thì ghi bút toán đảo trỏ về bản gốc, không bao giờ UPDATE hay DELETE bút toán cũ';
+COMMENT ON COLUMN journal_entries.created_txid IS
+    'TỒN TẠI ĐỂ trg_journal_lines_same_txn phân biệt được "header vừa sinh trong transaction này" với "header của một transaction đã xong". KHÔNG trùng vai với system column xmin: xmin của hàng ghi trong SAVEPOINT là id của SUBTRANSACTION, còn cột này lấy DEFAULT pg_current_xact_id() nên luôn là id transaction NGOÀI CÙNG. Xoá cột là mở lại lỗ hổng chèn dòng vào bút toán đã chốt — đọc khối comment ở trg_journal_lines_same_txn trước khi động vào';
+
+-- MỘT bút toán chỉ được đảo MỘT LẦN. ck_journal_reversal ở trên bắt REVERSAL phải
+-- trỏ về bản gốc, nhưng không nói gì về việc hai bút toán đảo cùng trỏ về một gốc.
+-- Thiếu ràng buộc này thì cả hai đều cân, cả hai đều qua trg_journal_balanced, và
+-- bản gốc bị đảo hai lần — tiền chạy ngược hai lượt, số dư lệch đúng bằng số tiền
+-- gốc, mà sổ cái vẫn "đúng" ở mọi phép kiểm từng-bút-toán.
+-- Partial index (bỏ NULL) chứ không UNIQUE thường: đại đa số bút toán không phải
+-- bút toán đảo, không việc gì phải đánh index cho NULL của chúng.
+-- Đảo một bút toán đảo VẪN được: C đảo B, B đảo A -> hai giá trị khác nhau.
+--
+-- ĐÂY LÀ MỘT LỰA CHỌN CHÍNH SÁCH, không phải chân lý hiển nhiên. Nó đồng thời cấm
+-- ĐẢO TỪNG PHẦN — nhiều bút toán đảo nhỏ cùng trỏ về một bút toán gốc — vốn là việc
+-- có thật trong nghiệp vụ ngân hàng. Ở phạm vi này ta chọn "một gốc, một đảo" vì nó
+-- đơn giản và DB kiểm được bằng một index. Ngày nào cần đảo từng phần thì phải thay
+-- ràng buộc này bằng một ràng buộc trên TỔNG số tiền đã đảo (không vượt bản gốc),
+-- chứ đừng chỉ lặng lẽ DROP index rồi đi tiếp.
+CREATE UNIQUE INDEX uq_journal_one_reversal
+    ON journal_entries (reversal_of_entry_id) WHERE reversal_of_entry_id IS NOT NULL;
 
 CREATE TABLE journal_lines (
     id               BIGSERIAL,
@@ -1528,7 +1853,7 @@ COMMENT ON COLUMN journal_lines.account_id IS
 COMMENT ON COLUMN journal_lines.amount IS
     'LUÔN DƯƠNG. Nợ hay Có do cột direction quyết định, không dùng dấu âm — số âm trong sổ cái là nguồn gốc của những đêm mất ngủ';
 COMMENT ON CONSTRAINT uq_journal_line ON journal_lines IS
-    'Postgres bắt UNIQUE/PK trên bảng partition PHẢI chứa cột partition, nên có created_at ở đây. Vẫn đủ mạnh: now() trả thời điểm BẮT ĐẦU transaction và không đổi trong transaction, nên mọi dòng của một bút toán có created_at giống hệt nhau';
+    'Postgres bắt UNIQUE/PK trên bảng partition PHẢI chứa cột partition, nên có created_at ở đây. ĐẢM BẢO NÀY CHỈ TRONG PHẠM VI MỘT TRANSACTION: now() không đổi suốt transaction nên mọi dòng của một bút toán có created_at giống hệt nhau, và line_no trùng bị chặn. Transaction KHÁC insert lại line_no cũ sẽ có created_at khác và LỌT — chặn chuyện đó là việc của trg_journal_lines_immutable, không phải của ràng buộc này';
 
 -- Partition theo tháng. Sinh sẵn ba tháng để hiểu cơ chế; sinh tự động về sau
 -- là việc của job hoặc pg_partman. DEFAULT hứng dữ liệu ngoài khoảng để INSERT
@@ -1554,17 +1879,33 @@ CREATE INDEX idx_lines_gl      ON journal_lines (gl_code, created_at DESC);
 -- Giải pháp: CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED. Nó chạy tại
 -- COMMIT chứ không tại INSERT — đúng lúc mọi dòng đã nằm trong bảng.
 --
--- Trigger đặt trên journal_entries (bảng THƯỜNG) chứ không trên journal_lines
--- (bảng PARTITION) để né các giới hạn của Postgres với trigger trên bảng partition.
--- Hệ quả: một bút toán đã cân rồi mà sau đó có ai chèn thêm dòng ở transaction
--- KHÁC thì trigger không chạy lại. Đó chính là điều nguyên tắc append-only cấm.
+-- Trigger đặt trên journal_entries (bảng THƯỜNG) vì phép cân đối nói về TẬP các
+-- dòng của một bút toán, và chỗ tự nhiên để kiểm tại COMMIT là hàng header.
+--
+-- KHOẢNG HỞ NÓ KHÔNG BỊT: bút toán đã cân, đã commit, rồi một transaction KHÁC chèn
+-- thêm dòng vào chính bút toán ấy. trg_journal_balanced chỉ chạy khi INSERT vào
+-- journal_entries nên không bao giờ chạy lại.
+--
+-- Trước đây chỗ này ghi rằng phải chấp nhận khoảng hở vì "bảng partition không mang
+-- nổi ràng buộc cần thiết". LÝ DO ĐÓ SAI, và đã kiểm lại bằng thực nghiệm trên đúng
+-- Postgres mà repo dùng (17.10):
+--   * trigger FOR EACH ROW trên bảng partition được Postgres nhân xuống MỌI partition
+--     con. pg_get_triggerdef cho thấy trg_journal_lines_immutable nằm trên
+--     journal_lines VÀ cả bốn partition.
+--   * kể cả CONSTRAINT TRIGGER ... DEFERRABLE INITIALLY DEFERRED đặt trên bảng
+--     partition cũng được chấp nhận và cũng nhân xuống đủ bốn partition.
+-- Không có giới hạn nào của Postgres buộc phải bỏ trống chỗ này.
+--
+-- Khoảng hở giờ do trg_journal_lines_same_txn (bên dưới) bịt.
 -- ---------------------------------------------------------------------
 CREATE FUNCTION core_banking.assert_journal_balanced() RETURNS TRIGGER
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_lines      INT;
-    v_net        NUMERIC(19,4);
-    v_currencies INT;
+    v_lines          INT;
+    v_net            NUMERIC(19,4);
+    v_currencies     INT;
+    v_non_postable   INT;
+    v_wrong_currency INT;
 BEGIN
     SELECT COUNT(*),
            COALESCE(SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END), 0),
@@ -1588,6 +1929,44 @@ BEGIN
             NEW.entry_reference, v_net;
     END IF;
 
+    -- Không được hạch toán thẳng vào tài khoản GL TỔNG HỢP (is_postable = FALSE).
+    -- Bút toán kiểu đó vẫn cân, nên nếu không chặn ở đây thì sai chỉ lộ ra ở khâu
+    -- đối chiếu — lúc đó đã lẫn vào hàng nghìn bút toán đúng. FK chỉ kiểm gl_code
+    -- có tồn tại, không kiểm nó có được phép hạch toán hay không.
+    SELECT COUNT(*)
+      INTO v_non_postable
+      FROM core_banking.journal_lines l
+      JOIN core_banking.gl_accounts  g ON g.gl_code = l.gl_code
+     WHERE l.journal_entry_id = NEW.id
+       AND NOT g.is_postable;
+
+    IF v_non_postable > 0 THEN
+        RAISE EXCEPTION 'Bút toán % có % dòng hạch toán vào GL tổng hợp (is_postable = FALSE)',
+            NEW.entry_reference, v_non_postable;
+    END IF;
+
+    -- Nguyên tắc 3 ở đầu file hứa "một tài khoản một loại tiền", nhưng phép kiểm
+    -- COUNT(DISTINCT currency) ở trên CHỈ nhìn trong nội bộ một bút toán: nó bắt được
+    -- bút toán TRỘN tiền, không bắt được bút toán ĐỒNG NHẤT NHƯNG SAI loại tiền. Hai
+    -- dòng USD cân nhau hạch toán vào tài khoản VND đi lọt sạch — rồi
+    -- accounts.ledger_balance cộng thẳng USD vào số dư VND, và không phép đối chiếu
+    -- nào ở [8] phát hiện ra vì bản thân bút toán vẫn cân.
+    --
+    -- Dòng có account_id NULL CỐ Ý không bị kiểm ở đây: theo quyết định DB3 đó là dòng
+    -- chỉ chạm GL nội bộ, không có tài khoản khách hàng nào để đối chiếu. JOIN (không
+    -- phải LEFT JOIN) loại chúng ra một cách tự nhiên — đừng "sửa" thành LEFT JOIN.
+    SELECT COUNT(*)
+      INTO v_wrong_currency
+      FROM core_banking.journal_lines l
+      JOIN core_banking.accounts     a ON a.id = l.account_id
+     WHERE l.journal_entry_id = NEW.id
+       AND a.currency <> l.currency;
+
+    IF v_wrong_currency > 0 THEN
+        RAISE EXCEPTION 'Bút toán % có % dòng lệch loại tiền so với tài khoản được hạch toán',
+            NEW.entry_reference, v_wrong_currency;
+    END IF;
+
     RETURN NULL;
 END;
 $$;
@@ -1596,6 +1975,99 @@ CREATE CONSTRAINT TRIGGER trg_journal_balanced
     AFTER INSERT ON journal_entries
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION core_banking.assert_journal_balanced();
+
+-- ---------------------------------------------------------------------
+-- APPEND-ONLY, ÉP BẰNG DB CHỨ KHÔNG CHỈ BẰNG LỜI
+--
+-- Nguyên tắc số 5 ở đầu file nói sổ cái không UPDATE, không DELETE. Cho tới
+-- đây đó mới chỉ là một câu văn: trg_journal_balanced chỉ chạy khi INSERT vào
+-- journal_entries, nên một UPDATE lên journal_lines làm lệch bút toán đã cân
+-- sẽ đi lọt hoàn toàn và không gì phát hiện được.
+--
+-- Và không thể thay bằng REVOKE: core_svc SỞ HỮU các bảng này, mà chủ sở hữu
+-- đi xuyên qua mọi GRANT. Chỉ trigger mới chặn được.
+--
+-- Còn hai đường vòng mà trigger không với tới: TRUNCATE và DROP TABLE. Cả hai
+-- đều cần quyền chủ sở hữu và đều là hành động có chủ ý, không phải tai nạn của
+-- một câu UPDATE viết vội — chấp nhận được ở tầng này.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION core_banking.reject_ledger_mutation() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION
+        'Sổ cái là APPEND-ONLY: % lên %.% bị từ chối. Sai thì ghi bút toán ĐẢO (transaction_type = ''REVERSAL'', reversal_of_entry_id trỏ về bản gốc)',
+        TG_OP, TG_TABLE_SCHEMA, TG_TABLE_NAME;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_entries_immutable
+    BEFORE UPDATE OR DELETE ON journal_entries
+    FOR EACH ROW EXECUTE FUNCTION core_banking.reject_ledger_mutation();
+
+CREATE TRIGGER trg_journal_lines_immutable
+    BEFORE UPDATE OR DELETE ON journal_lines
+    FOR EACH ROW EXECUTE FUNCTION core_banking.reject_ledger_mutation();
+
+-- ---------------------------------------------------------------------
+-- KHÔNG CHÈN DÒNG VÀO BÚT TOÁN ĐÃ COMMIT
+--
+-- Bịt nốt khoảng hở của trg_journal_balanced (mô tả ngay trên nó). Một bút toán đã
+-- cân và đã commit thì TẬP DÒNG của nó là bất biến; chèn thêm dòng vào đó là sửa một
+-- bản ghi sổ cái đã chốt. Hai trigger immutable phía trên chỉ chặn UPDATE và DELETE,
+-- nên trước trigger này INSERT là đường vòng duy nhất còn mở — và nó không để lại
+-- dấu vết nào, bút toán vẫn "tồn tại hợp lệ", chỉ là nội dung đã khác lúc chốt.
+--
+-- CƠ CHẾ: so journal_entries.created_txid với pg_current_xact_id() tại lúc chèn dòng.
+-- Bằng nhau nghĩa là header sinh ra trong CHÍNH transaction đang chạy — cho qua. Khác
+-- nhau nghĩa là header thuộc một transaction khác đã kết thúc — chặn.
+--
+-- VÌ SAO PHẢI CÓ CỘT created_txid MÀ KHÔNG DÙNG system column xmin. Đọc hết đoạn này
+-- trước khi xoá cột đó vì tưởng nó thừa:
+--   pg_current_xact_id() LUÔN trả id của transaction NGOÀI CÙNG. Còn xmin của một hàng
+--   ghi bên trong SAVEPOINT là id của SUBTRANSACTION, không phải của transaction ngoài
+--   cùng. Đo trực tiếp trên chính DB này: mở transaction (id ngoài cùng 1023), vào
+--   SAVEPOINT rồi INSERT header — xmin của header là 1024. Hai số không khớp.
+--   Hệ quả nếu dùng xmin: MỌI bố cục ghi header bên trong savepoint đều bị từ chối OAN.
+--   Đã dựng lại và xác nhận cả ba bố cục sau đều bị chặn sai:
+--     * header và các dòng cùng nằm trong một SAVEPOINT rồi RELEASE — đây đúng là thứ
+--       @Transactional(propagation = NESTED) của Spring sinh ra;
+--     * header trong SAVEPOINT đã RELEASE, các dòng ở mức ngoài;
+--     * SAVEPOINT/RELEASE bọc quanh TỪNG câu lệnh — hình dạng SQL mà PgJDBC tạo ra khi
+--       chạy với autosave=always (và với autosave=conservative sau một lỗi đã hồi phục).
+--       Với cấu hình đó thì mọi bút toán của hệ thống đều fail.
+--   created_txid lấy giá trị từ DEFAULT pg_current_xact_id(), và DEFAULT dù được tính
+--   BÊN TRONG savepoint vẫn cho id transaction ngoài cùng — đúng cái mà xmin không có.
+--   Cột này còn bỏ luôn phép cast xid8 -> xid (64 bit xuống 32 bit) và rủi ro wraparound
+--   đi kèm: xid8 so với xid8, không cast.
+--
+-- KHÔNG có ràng buộc nào về mức lồng transaction. Ghi header và các dòng ở mức nào,
+-- qua bao nhiêu lớp savepoint, theo thứ tự nào cũng được — điều kiện duy nhất là chúng
+-- thuộc cùng MỘT transaction ngoài cùng.
+-- ---------------------------------------------------------------------
+CREATE FUNCTION core_banking.assert_entry_not_committed() RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_ref TEXT;
+BEGIN
+    SELECT e.entry_reference
+      INTO v_ref
+      FROM core_banking.journal_entries e
+     WHERE e.id = NEW.journal_entry_id
+       AND e.created_txid <> pg_current_xact_id();
+
+    IF FOUND THEN
+        RAISE EXCEPTION
+            'Bút toán % đã COMMIT ở transaction trước — không được chèn thêm dòng. Sai thì ghi bút toán ĐẢO (transaction_type = ''REVERSAL''), không vá dòng vào bút toán cũ',
+            v_ref;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_lines_same_txn
+    AFTER INSERT ON journal_lines
+    FOR EACH ROW EXECUTE FUNCTION core_banking.assert_entry_not_committed();
 
 -- Chốt số dư cuối ngày. Hai công dụng: sao kê không phải quét lại sổ cái từ đầu,
 -- và job đối chiếu có mốc để so accounts.ledger_balance với tổng bút toán.
@@ -1690,6 +2162,42 @@ SQL
 
 Expected: FAIL với `Bút toán TEST-MOT-DONG có 1 dòng — tối thiểu 2`.
 
+- [ ] **Step 6b: Kiểm chứng sổ cái thật sự append-only**
+
+Chạy sau Step 5 (cần bút toán `TEST-CAN` đã commit):
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c \
+  "UPDATE core_banking.journal_lines SET amount = 999 WHERE journal_entry_id =
+     (SELECT id FROM core_banking.journal_entries WHERE entry_reference='TEST-CAN');"
+docker compose exec -T postgres psql -U postgres -d bank -c \
+  "DELETE FROM core_banking.journal_entries WHERE entry_reference='TEST-CAN';"
+```
+
+Expected: cả hai FAIL với `Sổ cái là APPEND-ONLY: UPDATE ...` và `... DELETE ...`. Đây là bằng chứng cho điều mà cho tới trước bản sửa này mới chỉ là một câu trong comment.
+
+Lưu ý rủi ro kỹ thuật: `journal_lines` là bảng partition. Postgres chỉ hỗ trợ `BEFORE ROW` trigger trên bảng partition từ phiên bản 13; ta đang chạy 17 nên phải được. Nếu `CREATE TRIGGER trg_journal_lines_immutable` báo lỗi, **dừng lại và báo cáo** — đừng chuyển sang tạo trigger trên từng partition con, vì partition tháng mới sinh sau này sẽ không có trigger và lỗ hổng quay lại im lặng.
+
+- [ ] **Step 6c: Kiểm chứng chặn hạch toán vào GL tổng hợp**
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c \
+  "INSERT INTO core_banking.gl_accounts (gl_code, name, account_class, normal_balance, is_postable)
+   VALUES ('1000', 'TÀI SẢN (tổng hợp)', 'ASSET', 'DEBIT', FALSE);"
+docker compose exec -T postgres psql -U postgres -d bank -v ON_ERROR_STOP=0 <<'SQL'
+BEGIN;
+INSERT INTO core_banking.journal_entries (entry_reference, transaction_type, value_date)
+VALUES ('TEST-TONGHOP', 'ADJUSTMENT', CURRENT_DATE);
+INSERT INTO core_banking.journal_lines (journal_entry_id, line_no, gl_code, direction, amount)
+SELECT id, 1, '1000', 'DEBIT',  100 FROM core_banking.journal_entries WHERE entry_reference='TEST-TONGHOP'
+UNION ALL
+SELECT id, 2, '2010', 'CREDIT', 100 FROM core_banking.journal_entries WHERE entry_reference='TEST-TONGHOP';
+COMMIT;
+SQL
+```
+
+Expected: `COMMIT` FAIL với `Bút toán TEST-TONGHOP có 1 dòng hạch toán vào GL tổng hợp (is_postable = FALSE)`. Bút toán này **cân** — nếu chỉ kiểm cân đối thì nó lọt.
+
 - [ ] **Step 7: Xác nhận dòng rơi đúng partition tháng 8**
 
 ```bash
@@ -1763,8 +2271,8 @@ Expected: `7`. Truy vấn này loại partition con (chúng có mặt trong `pg_
 
 CREATE TABLE transfers (
     id                         BIGSERIAL     PRIMARY KEY,
-    transfer_reference         VARCHAR(40)   NOT NULL UNIQUE,
-    idempotency_key            VARCHAR(64)   NOT NULL UNIQUE,
+    transfer_reference         VARCHAR(40)   NOT NULL,
+    idempotency_key            VARCHAR(64)   NOT NULL,
     transfer_type              VARCHAR(20)   NOT NULL,
     source_account_id          BIGINT        NOT NULL REFERENCES accounts (id),
     destination_account_id     BIGINT        REFERENCES accounts (id),
@@ -1785,20 +2293,37 @@ CREATE TABLE transfers (
     -- Constraint ĐẶT TÊN TƯỜNG MINH. Bản cũ để CHECK inline, Postgres tự đặt
     -- tên 'transfers_status_check', và đến migration sau mới phát hiện mình
     -- không biết nó tên gì. Bài học đó nằm ở đây.
+    CONSTRAINT uq_transfers_reference   UNIQUE (transfer_reference),
+    -- UNIQUE trên idempotency_key LÀ toàn bộ cơ chế chống trùng lệnh. Đặt tên
+    -- tường minh vì đây là ràng buộc mà code sẽ bắt lỗi theo tên khi client retry.
+    CONSTRAINT uq_transfers_idempotency UNIQUE (idempotency_key),
     CONSTRAINT ck_transfers_status  CHECK (status IN ('PENDING', 'PENDING_EXTERNAL', 'COMPLETED', 'FAILED', 'REVERSED')),
     CONSTRAINT ck_transfers_type    CHECK (transfer_type IN ('INTERNAL', 'EXTERNAL')),
     CONSTRAINT ck_transfers_channel CHECK (channel IN ('INTERNET', 'MOBILE', 'ATM', 'BRANCH', 'API')),
     CONSTRAINT ck_transfers_amount  CHECK (amount > 0 AND fee_amount >= 0),
     -- Chuyển nội bộ phải có tài khoản đích trong hệ thống; chuyển liên ngân hàng
-    -- phải có số tài khoản + mã ngân hàng đối tác. Không cho lẫn lộn.
+    -- phải có số tài khoản + mã ngân hàng đối tác. Mỗi nhánh vừa BẮT BUỘC trường
+    -- của loại mình, vừa CẤM trường của loại kia — nếu chỉ bắt buộc mà không cấm
+    -- thì một dòng EXTERNAL vẫn mang được destination_account_id, và nó trông như
+    -- cả hai loại giao dịch cùng lúc.
     CONSTRAINT ck_transfers_target  CHECK (
-           (transfer_type = 'INTERNAL' AND destination_account_id IS NOT NULL)
-        OR (transfer_type = 'EXTERNAL' AND destination_account_number IS NOT NULL
-                                       AND destination_bank_code IS NOT NULL)),
-    CONSTRAINT ck_transfers_self    CHECK (destination_account_id IS NULL OR destination_account_id <> source_account_id)
+           (transfer_type = 'INTERNAL'
+                AND destination_account_id     IS NOT NULL
+                AND destination_account_number IS NULL
+                AND destination_bank_code      IS NULL)
+        OR (transfer_type = 'EXTERNAL'
+                AND destination_account_number IS NOT NULL
+                AND destination_bank_code      IS NOT NULL
+                AND destination_account_id     IS NULL)),
+    CONSTRAINT ck_transfers_self    CHECK (destination_account_id IS NULL OR destination_account_id <> source_account_id),
+    -- COMPLETED nghĩa là tiền ĐÃ dịch chuyển. Không có journal_entry_id thì không
+    -- có bút toán nào phía sau — tức là báo tiền đã chuyển mà sổ cái không biết.
+    -- Cùng khuôn với ck_accrual_posted và ck_fee_charge_posted bên dưới.
+    CONSTRAINT ck_transfers_completed_posted CHECK (
+        status <> 'COMPLETED' OR journal_entry_id IS NOT NULL)
 );
 COMMENT ON COLUMN transfers.idempotency_key IS
-    'Client gửi lại cùng key = cùng một lệnh, không tạo giao dịch thứ hai. UNIQUE là toàn bộ cơ chế, không cần code kiểm tra trước';
+    'Client gửi lại cùng key = cùng một lệnh. UNIQUE ở đây đảm bảo AN TOÀN TIỀN BẠC (không bao giờ trừ hai lần) mà không cần code kiểm tra trước. Nhưng nó CHƯA làm endpoint idempotent: lần gọi lại nhận unique_violation chứ không nhận lại kết quả cũ. Muốn idempotent thật, tầng ứng dụng phải bắt vi phạm đó rồi tra và trả về chính transfer đã tạo';
 COMMENT ON COLUMN transfers.journal_entry_id IS
     'NULL khi chưa hạch toán (PENDING). Bút toán là sự thật; transfers chỉ là ý định';
 
@@ -1807,14 +2332,17 @@ COMMENT ON COLUMN transfers.journal_entry_id IS
 -- Thất bại hoặc quá hạn -> bút toán ĐẢO, không bao giờ xóa bút toán gốc.
 CREATE TABLE external_transfers (
     id                      BIGSERIAL   PRIMARY KEY,
-    transfer_id             BIGINT      NOT NULL UNIQUE REFERENCES transfers (id),
+    transfer_id             BIGINT      NOT NULL REFERENCES transfers (id),
     partner_code            VARCHAR(20) NOT NULL,
     partner_ref             VARCHAR(100),
     saga_state              VARCHAR(30) NOT NULL DEFAULT 'HOLD_PLACED',
-    partner_idempotency_key VARCHAR(64) NOT NULL UNIQUE,
+    partner_idempotency_key VARCHAR(64) NOT NULL,
     deadline_at             TIMESTAMPTZ NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Một transfer chỉ có tối đa một saga liên ngân hàng.
+    CONSTRAINT uq_ext_transfer     UNIQUE (transfer_id),
+    CONSTRAINT uq_ext_idempotency  UNIQUE (partner_idempotency_key),
     CONSTRAINT ck_ext_saga_state CHECK (saga_state IN (
         'HOLD_PLACED',        -- đã treo tiền nguồn, chưa gọi đối tác
         'PARTNER_REQUESTED',  -- đã gọi, đang chờ trả lời
@@ -1825,6 +2353,8 @@ CREATE TABLE external_transfers (
 );
 COMMENT ON COLUMN external_transfers.partner_idempotency_key IS
     'Idempotency với ĐỐI TÁC (khác idempotency_key với client): retry gọi partner dùng lại đúng key này';
+COMMENT ON COLUMN external_transfers.saga_state IS
+    'BẤT BIẾN DO ỨNG DỤNG GIỮ: saga_state và transfers.status là hai máy trạng thái mô tả cùng một sự việc và phải khớp nhau (PARTNER_CONFIRMED <-> COMPLETED, PARTNER_REJECTED/TIMED_OUT -> COMPENSATED <-> REVERSED). CHECK không với sang bảng khác được nên DB không chặn nổi việc chúng trôi lệch — cập nhật cả hai trong CÙNG transaction';
 
 -- Velocity check: đã dùng bao nhiêu hạn mức trong cửa sổ nào.
 -- Khuôn hạn mức nằm ở product.product_limits; bảng này là mức đã tiêu.
@@ -1841,6 +2371,8 @@ CREATE TABLE transfer_limit_usage (
 );
 COMMENT ON COLUMN transfer_limit_usage.window_start IS
     'Ngày đầu cửa sổ: hạn mức ngày thì là chính ngày đó, hạn mức tháng thì là ngày 01';
+COMMENT ON COLUMN transfer_limit_usage.limit_code IS
+    'Khớp product.product_limits.limit_code nhưng KHÔNG có FK (xuyên schema). Cái giá của ranh giới service: giá trị ở đây là chuỗi tự do, gõ sai hoặc đổi tên bên product mà không đồng bộ sẽ làm hạn mức âm thầm không được đếm. Đối chiếu định kỳ là việc của ứng dụng';
 
 -- Dự thu lãi HẰNG NGÀY, hạch toán định kỳ. UNIQUE(account_id, accrual_date)
 -- là toàn bộ cơ chế chống chạy EOD hai lần — không cần cờ "đã chạy chưa".
@@ -1924,6 +2456,14 @@ CREATE INDEX idx_core_outbox_unpub  ON outbox (created_at) WHERE published_at IS
 CREATE INDEX idx_audit_resource     ON audit_log (resource_type, resource_id, at DESC);
 CREATE INDEX idx_audit_actor        ON audit_log (actor_user_id, at DESC);
 
+-- updated_at do DB giữ (xem khối [1]). Bỏ các trigger này đi thì cột thành created_at.
+CREATE TRIGGER trg_transfers_updated_at BEFORE UPDATE ON transfers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+CREATE TRIGGER trg_ext_transfers_updated_at BEFORE UPDATE ON external_transfers
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+CREATE TRIGGER trg_limit_usage_updated_at BEFORE UPDATE ON transfer_limit_usage
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 RESET ROLE;
 SET search_path = public;
 
@@ -1965,6 +2505,30 @@ WHERE n.nspname IN ('auth','customer','product','core_banking','notification')
 ```
 
 Expected: `42`.
+
+- [ ] **Step 4b: Kiểm chứng hai ràng buộc vừa siết**
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO core_banking.transfers
+  (transfer_reference, idempotency_key, transfer_type, source_account_id,
+   destination_account_number, destination_bank_code, destination_account_id, amount, channel)
+VALUES ('T-LAI', 'K-LAI', 'EXTERNAL', 1, '9999', 'MOCKBANK', 2, 1000, 'API');"
+```
+
+Expected: FAIL với `violates check constraint "ck_transfers_target"` — dòng EXTERNAL mang thêm `destination_account_id` là dòng trông như cả hai loại.
+
+```bash
+docker compose exec -T postgres psql -U postgres -d bank -c "
+INSERT INTO core_banking.transfers
+  (transfer_reference, idempotency_key, transfer_type, source_account_id,
+   destination_account_number, destination_bank_code, amount, channel, status)
+VALUES ('T-XONG', 'K-XONG', 'EXTERNAL', 1, '9999', 'MOCKBANK', 1000, 'API', 'COMPLETED');"
+```
+
+Expected: FAIL với `violates check constraint "ck_transfers_completed_posted"` — báo COMPLETED mà không có `journal_entry_id` là báo tiền đã chuyển trong khi sổ cái không biết.
+
+Hai lệnh này chỉ cần constraint từ chối; không cần `accounts` id 1/2 tồn tại, vì CHECK được đánh giá trước FK.
 
 - [ ] **Step 5: Xác nhận không có FK nào xuyên schema**
 
@@ -2063,7 +2627,9 @@ INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months,
 SELECT id, 0, NULL, NULL, 0.001000 FROM products WHERE product_code = 'CA_STANDARD';
 
 INSERT INTO product_interest_rates (product_id, tier_from, tier_to, term_months, annual_rate)
-SELECT id, 0, 100000000, NULL, 0.005000 FROM products WHERE product_code = 'SA_STANDARD'
+-- NULL::INT ở nhánh ĐẦU của chuỗi UNION là bắt buộc: Postgres phân giải kiểu theo
+-- cặp, một cột toàn NULL không có kiểu sẽ thành text rồi không ép ngầm sang INT được.
+SELECT id, 0, 100000000, NULL::INT, 0.005000 FROM products WHERE product_code = 'SA_STANDARD'
 UNION ALL
 SELECT id, 100000000, NULL, NULL, 0.008000 FROM products WHERE product_code = 'SA_STANDARD';
 
@@ -2072,7 +2638,7 @@ SELECT id, 0, NULL, 12, 0.055000 FROM products WHERE product_code = 'TD_12M';
 
 -- Biểu phí của tài khoản thanh toán.
 INSERT INTO product_fees (product_id, fee_code, fee_type, amount, percent, min_amount, max_amount, charge_event)
-SELECT id, 'MAINT_MONTHLY', 'FLAT',    11000, NULL,    NULL,    NULL, 'MONTHLY_MAINTENANCE' FROM products WHERE product_code = 'CA_STANDARD'
+SELECT id, 'MAINT_MONTHLY', 'FLAT',    11000, NULL::NUMERIC, NULL::NUMERIC, NULL::NUMERIC, 'MONTHLY_MAINTENANCE' FROM products WHERE product_code = 'CA_STANDARD'
 UNION ALL
 SELECT id, 'TRF_INTERNAL',  'FLAT',        0, NULL,    NULL,    NULL, 'INTERNAL_TRANSFER'   FROM products WHERE product_code = 'CA_STANDARD'
 UNION ALL
@@ -2176,7 +2742,7 @@ Expected: `0`.
 cd /Users/tanvx/Dev/bank-platform && docker compose logs postgres 2>&1 | grep -iE "error|fatal|warning" | grep -v "listening on" || echo "SẠCH"
 ```
 
-Expected: `SẠCH`.
+Expected: chỉ còn hai cảnh báo hạ tầng của Postgres lúc khởi tạo (locale và trust-auth) — chúng xuất hiện trước khi `schema.sql` chạy và có ở mọi container. Điều cần chứng minh là **không có dòng `ERROR` hay `FATAL` nào**. Literal `SẠCH` không đạt được trong môi trường này.
 
 - [ ] **Step 6: Commit**
 
@@ -2430,6 +2996,26 @@ mkdir -p services/auth-service/src/test/resources
       <artifactId>javalibs-cache-spring-boot-starter</artifactId>
     </dependency>
 
+    <!--
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -2803,6 +3389,59 @@ done
       <artifactId>javalibs-search-spring-boot-starter</artifactId>
     </dependency>
 
+    <!-- Outbox: phát product.activated.v1 / product.retired.v1 cùng transaction với
+         việc đổi trạng thái sản phẩm. Bảng product.outbox đã có sẵn trong
+         docs/database/schema.sql, kể cả index quét bản chưa publish — không có hai
+         dependency dưới đây thì bảng đó là một hàng đợi không ai rút. -->
+    <dependency>
+      <groupId>io.javalibs</groupId>
+      <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
+    </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này, product.activated.v1 / product.retired.v1 không phát nghĩa là
+      service khác không bao giờ vô hiệu hoá cache catalog: sản phẩm đã RETIRED vẫn
+      tiếp tục được chào bán, và lãi suất vừa đổi vẫn chưa có hiệu lực ở nơi dùng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
+
+    <!--
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -2850,6 +3489,30 @@ Giống Step 3 với ba thay đổi: `<artifactId>notification-service</artifact
     <dependency>
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-resilience-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Một event không phát mà không ai báo lỗi là kiểu hỏng tệ nhất trên nền tảng
+      ngân hàng — tiền đã ghi sổ nhưng phía nghe không bao giờ biết.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
     </dependency>
 ```
 
@@ -2917,6 +3580,9 @@ spring:
     schemas: product
     default-schema: product
     clean-disabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
 
   data:
     redis:
@@ -3179,7 +3845,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `services/core-banking-service/pom.xml`, `README.md`, `ERROR-CODES.md`, `Dockerfile`
 - Create: `services/core-banking-service/src/main/java/io/bankplatform/corebanking/CoreBankingApplication.java`
-- Create: 18 thư mục rỗng dưới `io/bankplatform/corebanking/` (danh sách ở Step 2)
+- Create: 24 thư mục lá rỗng dưới `io/bankplatform/corebanking/` (danh sách ở Step 2 là nguồn sự thật; `mkdir -p` tạo thêm 11 thư mục cha, tổng 35)
 - Create: `src/main/resources/{application.yml,application-local.yml,db/migration/.gitkeep}`
 - Create: `src/test/java/io/bankplatform/corebanking/{domain,application,api}/.gitkeep`, `src/test/resources/application-test.yml`
 - Modify: `pom.xml`
@@ -3232,10 +3898,17 @@ mkdir -p services/core-banking-service/src/test/resources
 
 ```bash
 cd /Users/tanvx/Dev/bank-platform
-find services/core-banking-service/src/main/java -type d | sed 's|.*corebanking/||' | grep -v corebanking | sort
+B=services/core-banking-service/src/main/java/io/bankplatform/corebanking
+echo "thư mục lá: $(find $B -name .gitkeep | wc -l | tr -d ' ')"
+echo "tổng thư mục (kể cả corebanking): $(find $B -type d | wc -l | tr -d ' ')"
+find $B -type d | sed "s|^$B/*||" | grep -v '^$' | sort
 ```
 
-Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/account`, `application/account/command`, … `config`.
+Expected: `thư mục lá: 24` và `tổng thư mục (kể cả corebanking): 36` — tức 24 lá trong vòng lặp Step 2, cộng 11 thư mục cha do `mkdir -p` tự tạo (`api`, `application`, `application/{account,ledger,transfer}`, `domain`, `domain/{account,ledger,transfer}`, `infrastructure`, `infrastructure/persistence`), cộng chính `corebanking`. Danh sách in ra bắt đầu bằng `api`, `api/dto`, `application`, `application/account`, `application/account/command`, … và kết thúc ở `infrastructure/persistence/transfer`.
+
+**Vòng lặp ở Step 2 là nguồn sự thật, không phải con số ở đây.** Nếu số đếm lệch, sửa cây cho khớp danh sách Step 2 — tuyệt đối không xoá thư mục để ép cho vừa một con số. Hình dạng ba aggregate (`account`, `ledger`, `transfer`) × ba loại (`model`, `rule`, `event`) là chính cái thiết kế mà README của service này giải thích.
+
+Neo `find` vào thẳng `corebanking` chứ đừng vào `src/main/java`: đường dẫn service là `core-banking-service` có gạch nối, nên `grep -v corebanking` không lọc được ba dòng cha `src/main/java`, `.../io`, `.../io/bankplatform` và số đếm sẽ dôi ra 3.
 
 - [ ] **Step 4: Viết `services/core-banking-service/pom.xml`**
 
@@ -3299,6 +3972,29 @@ Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/a
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này outbox mang bút toán đã ghi sổ: publisher chết câm nghĩa là
+      sổ cái đúng nhưng cả hệ còn lại không bao giờ biết giao dịch đã xảy ra.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
     <!-- Circuit breaker khi gọi ngân hàng đối tác: chặn cascading failure -->
     <dependency>
       <groupId>io.javalibs</groupId>
@@ -3310,6 +4006,26 @@ Expected: đúng 25 dòng, gồm `api`, `api/dto`, `application`, `application/a
       <artifactId>javalibs-search-spring-boot-starter</artifactId>
     </dependency>
 
+    <!--
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -3678,6 +4394,29 @@ mkdir -p services/customer-service/src/test/resources
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
+      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
+
+      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
+      optional, nên client Kafka luôn có mặt. Thứ thiếu là
+      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
+      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
+      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
+      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
+
+      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
+      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
+      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
+      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
+      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
+      Riêng service này, customer.kyc.approved.v1 không phát nghĩa là khách đã được
+      duyệt KYC nhưng không service nào mở được tài khoản cho họ.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-kafka</artifactId>
+    </dependency>
     <!-- Lọc động danh sách khách hàng -->
     <dependency>
       <groupId>io.javalibs</groupId>
@@ -3689,6 +4428,26 @@ mkdir -p services/customer-service/src/test/resources
       phải bảo trì mà không bảo vệ gì.
     -->
 
+    <!--
+      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
+      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
+      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
+      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
+      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
+      Spring soi @Bean của lớp cấu hình.
+
+      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
+      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
+      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
+      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
+      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
+      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
+      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -3867,7 +4626,7 @@ Một người có thể là customer mà chưa có user (mở tại quầy), c�
 1. **Không hai khách hàng cùng một giấy tờ.** DB có `uq_ident`, nhưng domain phải báo lỗi nghiệp vụ tử tế trước khi chạm DB.
 2. **KYC `APPROVED`/`REJECTED` bắt buộc có `decided_at`; `REJECTED` bắt buộc có lý do.**
 3. **`customers.kyc_level` chỉ tăng khi có một `kyc_verifications` APPROVED ở mức đó và chưa hết hạn.**
-4. **`INDIVIDUAL` có `individual_details`, `ORGANIZATION` có `organization_details`** — không có cái ngược lại. DB không ràng buộc được điều này (nó ở hai bảng), domain phải giữ.
+4. **`INDIVIDUAL` có `individual_details`, `ORGANIZATION` có `organization_details`** — không có cái ngược lại. Phần *loại trừ* DB đã tự chặn: `customers` có `uq_customers_id_type UNIQUE (id, customer_type)`, hai bảng chi tiết FK theo cặp `(customer_id, customer_type)` và `CHECK` ghim `customer_type` bằng đúng loại của mình — mẫu disjoint subtype, nên không thể gắn hồ sơ tổ chức cho khách hàng cá nhân. Phần domain phải giữ là phần *tồn tại*: DB không ép một khách hàng `ACTIVE` phải có dòng chi tiết nào cả.
 
 ## Event phát ra
 
@@ -3955,33 +4714,50 @@ Khác với 5 service kia, gateway **không có `ERROR-CODES.md`** — nó khôn
 - [ ] **Step 1: Liệt kê các bản `spring-cloud-dependencies` mới nhất**
 
 ```bash
-curl -s "https://search.maven.org/solrsearch/select?q=g:org.springframework.cloud+AND+a:spring-cloud-dependencies&core=gav&rows=30&wt=json" \
-  | python3 -c "import json,sys; [print(d['v']) for d in json.load(sys.stdin)['response']['docs']]"
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/maven-metadata.xml" \
+  | grep -oE "<latest>[^<]*</latest>|<release>[^<]*</release>"
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/maven-metadata.xml" \
+  | grep -oE "<version>202[5-9][^<]*</version>" | tail -12
 ```
 
 Ghi lại danh sách. Nếu lệnh thất bại vì không có mạng, bỏ qua sang Step 2b.
+
+**Dùng `maven-metadata.xml`, ĐỪNG dùng API solr của search.maven.org.** Bản plan trước gọi solr với `rows=30`: nó trả về danh sách không sắp theo thời gian và cắt ngắn, cho ra `2025.0.0` như thể là bản mới nhất trong khi `2025.1.2` đã có. Hai train đó khác nhau ở đúng chỗ quan trọng nhất của task này — `2025.0.0` bám Spring Boot 3.5.0, `2025.1.2` bám Boot 4.0.7. Tin vào solr là báo BLOCKED nhầm. `maven-metadata.xml` có `<latest>`/`<release>` tường minh, đó mới là nguồn sự thật.
 
 - [ ] **Step 2a: Tìm bản có `spring-boot.version` là 4.1.x**
 
 Với từng version ứng viên `<V>` (mới nhất trước), kiểm tra POM của nó:
 
 ```bash
-V=2026.0.0   # thay bằng version thật từ Step 1
+V=2025.1.2   # thay bằng version thật từ Step 1
 curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/${V}/spring-cloud-dependencies-${V}.pom" \
-  | grep -iE "spring-boot.version|<name>"
+  | grep -oE "<spring-boot.version>[^<]*</spring-boot.version>|<spring-cloud-gateway.version>[^<]*</spring-cloud-gateway.version>"
+```
+
+Không thấy `spring-boot.version` trong POM tổng hợp thì lần lên chuỗi parent — vài train để nó ở `spring-cloud-build-dependencies` chứ không khai tại chỗ:
+
+```bash
+P=$(curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-dependencies/${V}/spring-cloud-dependencies-${V}.pom" \
+     | sed -n '/<parent>/,/<\/parent>/p' | grep -oE "<version>[^<]*</version>" | head -1 | sed 's/<[^>]*>//g')
+curl -s "https://repo1.maven.org/maven2/org/springframework/cloud/spring-cloud-build-dependencies/${P}/spring-cloud-build-dependencies-${P}.pom" \
+  | grep -oE "<spring-boot.version>[^<]*</spring-boot.version>"
 ```
 
 Ghi lại kết quả. Có ba khả năng:
 
+**Người dùng đã quyết định: dùng Spring Cloud Gateway, không dùng nginx.** Verify ở đây là để chọn đúng *version*, không phải để chọn *có dùng hay không*.
+
 | Kết quả | Hành động |
 |---|---|
 | Tìm được bản khai `spring-boot.version` **4.1.x** | Đi tiếp Step 3 với version đó |
-| Chỉ có bản cho Boot 4.0.x | Thử Step 3 với bản đó; nếu build hoặc khởi động lỗi thì sang Step 2b |
-| Không có bản nào cho Boot 4.x | Sang Step 2b |
+| Chỉ có bản cho Boot 4.0.x | Thử Step 3 với bản đó — Boot 4.0 và 4.1 cùng dòng major, khả năng chạy được cao. Nếu build hoặc khởi động lỗi, ghi lại lỗi thật rồi báo **BLOCKED** |
+| Không có bản nào cho Boot 4.x | Báo **BLOCKED** ngay, kèm danh sách version đã thử và `spring-boot.version` của từng bản |
 
-- [ ] **Step 2b: Đường lui — nginx thay gateway**
+**Không tự ý chuyển sang nginx.** Đó là quyết định của con người, không phải của người triển khai. Nếu Spring Cloud Gateway không dùng được với Boot 4.1, việc cần làm là dừng lại và báo — vì lựa chọn thay thế có thể là hạ Spring Boot, đợi release train mới, hoặc chấp nhận nginx, và cả ba đều nằm ngoài thẩm quyền của task này.
 
-Chỉ làm khi Step 2a không tìm được bản dùng được. Tạo `docker/nginx/nginx.conf`:
+- [ ] **Step 2b: (dự phòng, CHỈ chạy khi người dùng đổi quyết định) — nginx thay gateway**
+
+Giữ lại làm tài liệu tham chiếu. **Không chạy step này trừ khi được chỉ định rõ ràng.** Tạo `docker/nginx/nginx.conf`:
 
 ```nginx
 # Đường lui khi chưa có Spring Cloud Gateway tương thích Spring Boot 4.1.
@@ -4057,8 +4833,43 @@ Thay `<SPRING_CLOUD_VERSION>` bằng version xác minh được ở Step 2a:
   </description>
 
   <properties>
-    <!-- Version này đã được xác minh khai spring-boot.version 4.1.x. Đổi Spring Boot
-         thì phải kiểm lại: Spring Cloud đi theo release train riêng, bám sát Boot. -->
+    <!--
+      Version này phải được xác minh ở Step 2a, đừng chép mù. Tính tới lúc viết,
+      train GA mới nhất là 2025.1.2, khai spring-boot.version 4.0.7 và quản lý
+      spring-cloud-gateway 5.0.2.
+
+      Repo này chạy Boot 4.1.0 — LỆCH MỘT MINOR so với 4.0.7 ghi trong POM của
+      train. ĐÂY KHÔNG PHẢI MỘT XUNG ĐỘT VERSION, và lý do rất cụ thể:
+
+      spring-cloud-dependencies:2025.1.2 CHỈ quản lý artifact nhóm
+      org.springframework.cloud. Nó KHÔNG import spring-boot-dependencies, và
+      trong cả file POM đó lẫn POM cha spring-cloud-dependencies-parent:5.0.2
+      không có MỘT tham chiếu nào tới nhóm org.springframework.boot — kiểm bằng
+      `grep -c "org.springframework.boot"` trên hai file trong ~/.m2, cả hai trả 0.
+      Nghĩa là import BOM này KHÔNG đưa ra bất kỳ version Boot nào để mà tranh
+      chấp. Boot 4.1.0 từ spring-boot-starter-parent là version DUY NHẤT có mặt,
+      không phải version "thắng" một version nào khác.
+
+      Còn <spring-boot.version>4.0.7</spring-boot.version> nằm trong POM ấy thì
+      được KHAI nhưng không được THAM CHIẾU ở bất cứ đâu trong chính file ấy — nó
+      ghi lại dòng Boot mà train được build và kiểm thử cùng. Là tài liệu, không
+      phải cơ chế quản lý version. Đọc nhầm nó thành "train ghim Boot 4.0.7"
+      chính là cái bẫy ở đây.
+
+      QUY TẮC RÚT RA: một BOM import chỉ ghim đúng những artifact mà nó thực sự
+      quản lý. Trước khi tin rằng BOM đang đánh nhau với parent, mở POM của BOM
+      ra xem nó quản lý những nhóm nào.
+
+      LƯỚI AN TOÀN (đã kiểm bằng thực nghiệm, không suy luận): kể cả khi một train
+      tương lai CÓ import spring-boot-dependencies, dependencyManagement thừa kế
+      từ parent vẫn thắng BOM import ở POM con. Dựng một POM thử có parent
+      spring-boot-starter-parent:4.1.0 và tự import spring-boot-dependencies:4.0.7,
+      rồi chạy dependency:tree — mọi artifact Boot vẫn phân giải ở 4.1.0.
+
+      Nếu build hoặc khởi động lỗi vì lệch này, ghi lại lỗi THẬT rồi báo BLOCKED —
+      đừng tự hạ Boot xuống 4.0.x, đó là quyết định ảnh hưởng cả sáu service chứ
+      không riêng gateway.
+    -->
     <spring-cloud.version>SPRING_CLOUD_VERSION</spring-cloud.version>
   </properties>
 
@@ -4126,29 +4937,41 @@ spring:
 
   cloud:
     gateway:
-      # Route khai bằng cấu hình, không bằng code — thêm service mới là thêm
-      # vài dòng yaml, không phải deploy lại logic.
-      routes:
-        - id: auth
-          uri: ${AUTH_URI:http://localhost:8081}
-          predicates:
-            - Path=/api/auth/**
-        - id: customer
-          uri: ${CUSTOMER_URI:http://localhost:8082}
-          predicates:
-            - Path=/api/customers/**
-        - id: product
-          uri: ${PRODUCT_URI:http://localhost:8083}
-          predicates:
-            - Path=/api/products/**
-        - id: core-banking
-          uri: ${CORE_URI:http://localhost:8084}
-          predicates:
-            - Path=/api/accounts/**,/api/transfers/**
-        - id: notification
-          uri: ${NOTIFICATION_URI:http://localhost:8085}
-          predicates:
-            - Path=/api/notifications/**
+      # PREFIX PHẢI LÀ spring.cloud.gateway.server.webmvc, KHÔNG PHẢI
+      # spring.cloud.gateway. Cái sau là của bản REACTIVE. Step 4 chọn bản
+      # servlet (spring-cloud-starter-gateway-server-webmvc), mà lớp cấu hình
+      # của nó là GatewayMvcProperties với
+      # @ConfigurationProperties("spring.cloud.gateway.server.webmvc").
+      #
+      # Sai prefix hỏng theo kiểu IM LẶNG, giống hệt vụ spring-boot-kafka ở
+      # Task 13: app khởi động bình thường, /actuator/health trả UP, không một
+      # dòng cảnh báo nào — nhưng KHÔNG route nào được nạp và mọi đường dẫn
+      # đều 404. Spring Boot không kêu ca về khoá cấu hình nó không biết.
+      server:
+        webmvc:
+          # Route khai bằng cấu hình, không bằng code — thêm service mới là thêm
+          # vài dòng yaml, không phải deploy lại logic.
+          routes:
+            - id: auth
+              uri: ${AUTH_URI:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
+            - id: customer
+              uri: ${CUSTOMER_URI:http://localhost:8082}
+              predicates:
+                - Path=/api/customers/**
+            - id: product
+              uri: ${PRODUCT_URI:http://localhost:8083}
+              predicates:
+                - Path=/api/products/**
+            - id: core-banking
+              uri: ${CORE_URI:http://localhost:8084}
+              predicates:
+                - Path=/api/accounts/**,/api/transfers/**
+            - id: notification
+              uri: ${NOTIFICATION_URI:http://localhost:8085}
+              predicates:
+                - Path=/api/notifications/**
 
 server:
   port: 8080
@@ -4157,7 +4980,30 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        # KHÔNG khai "gateway" ở đây. Bản webmvc của Spring Cloud Gateway KHÔNG có
+        # endpoint actuator nào: cả jar spring-cloud-gateway-server-webmvc-5.0.2
+        # (236 entry) không chứa một class @Endpoint/actuate nào — kiểm bằng
+        # `unzip -l` trên jar trong ~/.m2. Khai một endpoint không tồn tại thì Boot
+        # lặng lẽ bỏ qua, nên nó không gây lỗi; nó chỉ làm người đọc tưởng
+        # /actuator/gateway/routes dùng được (nó luôn trả 404 — xem README).
+        #
+        # Quan trọng hơn là thứ ĐÃ THIẾU: thiếu "metrics" thì gateway không phơi
+        # /actuator/metrics, trong khi năm service kia đều phơi — thành phần MỌI
+        # request đi qua lại là điểm mù đo đạc duy nhất. Sau khi sửa,
+        # /actuator/metrics trên gateway trả 200 (đã chạy thật và kiểm).
+        #
+        # ĐỪNG HIỂU NHẦM "prometheus" (đã kiểm, ghi ra để không ai tưởng bở): mục này
+        # HIỆN CHƯA có tác dụng ở BẤT KỲ service nào trong repo. Endpoint
+        # /actuator/prometheus chỉ ra đời khi classpath có một Prometheus registry
+        # (micrometer-registry-prometheus) — mà không service nào có:
+        # javalibs-observability-spring-boot-starter chỉ kéo spring-boot-starter-actuator
+        # + micrometer core + tracing bridge OTel. `dependency:tree` của gateway và của
+        # product đều không có dòng nào khớp "prometheus", và /actuator/prometheus trên
+        # gateway trả 404.
+        # Vẫn giữ "prometheus" ở đây để danh sách khớp năm service kia và để endpoint
+        # tự sống dậy ngay khi ai đó thêm registry. Nhưng muốn Prometheus scrape được
+        # THẬT thì phải thêm registry cho cả sáu service — đó là việc riêng, chưa làm.
+        include: health,info,metrics,prometheus
 ```
 
 - [ ] **Step 7: Viết `application-local.yml`**
@@ -4222,8 +5068,17 @@ Spring Cloud đi theo release train riêng, bám sát version Spring Boot.
 
 ```bash
 mvn -pl services/gateway-service -am spring-boot:run -Dspring-boot.run.profiles=local
-curl -s http://localhost:8080/actuator/gateway/routes | head -c 400
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/foo   # có route -> thử proxy thật
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/khong-co-route  # 404 trơn
 ```
+
+**Không có `/actuator/gateway/routes`.** Endpoint đó thuộc bản *reactive*
+(`GatewayControllerEndpoint` nằm trong `spring-cloud-gateway-server`); jar servlet
+`spring-cloud-gateway-server-webmvc` không chứa một lớp `@Endpoint` nào. Cách kiểm
+route ở đây là so sánh hành vi: đường dẫn CÓ route sẽ cố mở kết nối tới backend
+(502/500 khi backend chưa chạy — chính nó chứng minh route đã khớp), còn đường dẫn
+không có route trả 404 trơn. Bật `logging.level.org.springframework.cloud.gateway=DEBUG`
+thì `RouterFunctionHolderFactory` in ra danh sách route lúc khởi động.
 ```
 
 Nếu đi theo đường lui Step 2b, thay hai mục đầu bằng ghi chú: module Java đang rỗng có chủ đích, `compose.yaml` dùng nginx tại cổng 8080, và điều kiện để quay lại Spring Cloud Gateway.
@@ -4241,11 +5096,18 @@ cd /Users/tanvx/Dev/bank-platform && mvn -B -P'!with-libs' clean install
 mvn -pl services/gateway-service spring-boot:run -Dspring-boot.run.profiles=local > /tmp/gw-run.log 2>&1 &
 sleep 40
 curl -s http://localhost:8080/actuator/health; echo
-curl -s http://localhost:8080/actuator/gateway/routes | head -c 400; echo
+for p in /api/auth/foo /api/customers/foo /api/products/foo /api/accounts/foo /api/transfers/foo /api/notifications/foo /khong-co-route; do
+  printf "%-26s %s\n" "$p" "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080$p)"
+done
+grep -i "route" /tmp/gw-run.log | head -10
 pkill -f "spring-boot:run" || true
 ```
 
-Expected: `{"status":"UP"...}` và JSON liệt kê 5 route. Nếu đi đường lui Step 2b: `docker compose up -d gateway && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/` trả về mã HTTP (502 khi auth-service chưa chạy là bình thường — nó chứng minh nginx đã định tuyến).
+Expected: `{"status":"UP"...}`; sáu đường dẫn `/api/**` KHÔNG trả 404 (backend chưa chạy nên 500/502 — chính nó chứng minh route đã khớp và gateway đã cố proxy), còn `/khong-co-route` trả đúng 404.
+
+**Đừng chờ `/actuator/gateway/routes`** — endpoint đó không tồn tại trong bản servlet (xem ghi chú ở Step 9). Muốn thấy danh sách route lúc khởi động thì thêm `logging.level.org.springframework.cloud.gateway: DEBUG` vào `application-local.yml`.
+
+Nếu đi đường lui Step 2b: `docker compose up -d gateway && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/auth/` trả về mã HTTP (502 khi auth-service chưa chạy là bình thường — nó chứng minh nginx đã định tuyến).
 
 - [ ] **Step 12: Commit**
 
@@ -4322,10 +5184,18 @@ failsafe-reports/
 .env.*
 !.env.sample
 
+# Scratch của subagent-driven-development — không bao giờ commit
+.superpowers/
+
+# Cấu hình skill cục bộ của người dùng — không thuộc về repo
+.claude
+
 # Linh tinh
 *.orig
 *.rej
 ```
+
+**Hai dòng `.superpowers/` và `.claude` là bắt buộc, đừng bỏ.** Step 15 của task này chạy `git add -A`. Thiếu `.superpowers/` thì toàn bộ ledger và báo cáo của quy trình review bị commit vào repo; thiếu `.claude` thì thư mục cấu hình skill cục bộ của người dùng (2.2 MB, 101 file) bị kéo vào. **Cả hai dòng đã có sẵn trong `.gitignore` trước khi task này chạy** — việc của Step 2 là **mở rộng** file, tuyệt đối không ghi đè làm mất chúng. Kiểm lại bằng `git check-ignore -v .claude .superpowers` sau khi sửa.
 
 - [ ] **Step 3: Viết `.editorconfig`**
 
@@ -4468,8 +5338,15 @@ jobs:
       - name: Kiểm tra schema.sql chạy được
         run: |
           docker compose up -d postgres
+          # -h 127.0.0.1 KHÔNG thừa — bỏ nó đi là job này fail ngẫu nhiên trên commit tốt.
+          # Trong lúc initdb, docker-entrypoint.sh dựng server TẠM bằng
+          # docker_temp_server_start() với `-c listen_addresses=''`: nghe Unix socket,
+          # KHÔNG nghe TCP. pg_isready không có -h thì đi qua socket nên báo sẵn sàng
+          # ngay lúc server tạm còn sống — tức TRƯỚC khi 01-schema.sql chạy xong, và
+          # câu đếm bảng bên dưới chạy vào một database chưa có đủ 42 bảng.
+          # Ép qua TCP thì chỉ server THẬT (sau initdb) mới làm probe xanh được.
           for i in $(seq 1 30); do
-            docker compose exec -T postgres pg_isready -U postgres -d bank && break
+            docker compose exec -T postgres pg_isready -h 127.0.0.1 -U postgres -d bank && break
             sleep 2
           done
           COUNT=$(docker compose exec -T postgres psql -U postgres -d bank -tAc "
