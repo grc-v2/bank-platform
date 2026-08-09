@@ -57,6 +57,30 @@
     </dependencies>
   </dependencyManagement>
 
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <executions>
+            <!--
+              Sinh build-info.properties để BuildProperties tồn tại lúc runtime —
+              nguồn của trường "version" trong API /info. Đặt ở pluginManagement
+              nên áp cho MỌI service (chúng đều khai plugin này), một chỗ duy nhất.
+              platform-libs không nhận pom này làm parent nên không bị ảnh hưởng.
+            -->
+            <execution>
+              <goals>
+                <goal>build-info</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
   <profiles>
     <!--
       platform-libs là javalibs nguyên vẹn: nó KHÔNG khai POM này làm <parent>

@@ -52,6 +52,19 @@
       <groupId>io.javalibs</groupId>
       <artifactId>javalibs-cache-spring-boot-starter</artifactId>
     </dependency>
+    <!--
+      javalibs-cache-spring-boot-starter mặc định chạy Caffeine (in-memory); POM
+      của chính nó ghi rõ: "To use Redis instead, add spring-boot-starter-data-redis
+      to the application — the auto-configuration switches automatically." Thiếu
+      dependency này thì JavalibsRedisCacheAutoConfiguration không có
+      RedisConnectionFactory để inject nên không kích hoạt, và actuator HealthEndpoint
+      không có component "redis" — sai với mục đích khai báo ở trên (blacklist revoke
+      qua Redis) lẫn với application.yml đã cấu hình spring.data.redis.*.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
 
     <!--
       BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
