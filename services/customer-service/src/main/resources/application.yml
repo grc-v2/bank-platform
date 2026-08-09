@@ -31,9 +31,31 @@ javalibs:
   security:
     jwt:
       secret: ${JWT_SECRET}
+    # DANH SÁCH NÀY THAY THẾ danh sách mặc định của javalibs-security, không
+    # phải nối thêm — nên phải chép lại đủ 7 đường mặc định. Thiếu một dòng là
+    # khoá swagger/actuator trong im lặng.
+    permit-all:
+      - /actuator/health
+      - /actuator/health/**
+      - /actuator/info
+      - /error
+      - /v3/api-docs/**
+      - /swagger-ui/**
+      - /swagger-ui.html
+      # info công khai có chủ đích: chưa có luồng phát JWT, và payload chỉ là
+      # metadata dev (không secret, không connection string).
+      - /api/customers/info
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+
+bank:
+  info:
+    description: "CIF: hồ sơ khách hàng, giấy tờ, địa chỉ, liên hệ, KYC, đánh giá rủi ro."
+    structure-level: "A — phẳng"
+    db-schema: customer
+    error-code-prefix: ERR-CUST
+    port: 8082
