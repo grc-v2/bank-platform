@@ -2,7 +2,7 @@
 
 Monorepo core banking dùng để học nghiệp vụ ngân hàng bằng cách tự xây nó. Spring Boot 4.1 · Java 21 · PostgreSQL 17.
 
-**Đây là base project: không có code nghiệp vụ.** Toàn repo có đúng 6 file `.java`, đều là main class. Cấu trúc package đã dựng sẵn và rỗng; database đã thiết kế đầy đủ.
+**Đây là base project: không có code nghiệp vụ.** Toàn repo có 6 main class + code nghiệp vụ tăng dần theo feature. Cấu trúc package đã dựng sẵn và rỗng; database đã thiết kế đầy đủ.
 
 ## Cấu trúc
 
@@ -49,6 +49,21 @@ docker compose down -v && docker compose up -d postgres
 `db/migration/` của các service đang **rỗng** và `spring.flyway.enabled=false`. Khi bắt tay vào một service, cắt khối schema của nó từ `schema.sql` thành migration Flyway đầu tiên rồi bật lên.
 
 Đọc phần đầu `schema.sql` để hiểu 9 nguyên tắc thiết kế và 4 quyết định lớn. Bản thiết kế cũ nằm ở `docs/legacy/` kèm giải thích cái gì đã đổi.
+
+## Frontend dashboard
+
+Dashboard dev hiển thị thông tin 6 service (`frontend/`, React + Vite):
+
+```bash
+# backend phải chạy trước: docker compose up -d rồi bật các service
+cd frontend && npm install && npm run dev
+```
+
+Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
+(permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
+uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
+Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
+indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
 
 ## Hai mức cấu trúc service
 
