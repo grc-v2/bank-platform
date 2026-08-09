@@ -47,7 +47,7 @@ Entity + repository map đủ 3 bảng của schema `auth` (schema.sql khối [2
 Điểm mapping đáng chú ý khác:
 
 - `refresh_tokens.user_id` và `login_audit.user_id` là cột `Long` thường, KHÔNG association `@ManyToOne` sang `User` — token/audit có vòng đời độc lập với aggregate `User`. `login_audit` cố ý không có FK sang `users` ở tầng DB lẫn Java, để giữ được cả log đăng nhập bằng username không tồn tại.
-- `login_audit.at` (TIMESTAMPTZ, DEFAULT now(), DB giữ) map vào field `occurredAt` qua `@Column(name = "at")` — đổi tên vì `at` không phải định danh Java hợp lệ để dùng thoải mái làm tên field mô tả.
+- `login_audit.at` (TIMESTAMPTZ, DEFAULT now(), DB giữ) map vào field `occurredAt` qua `@Column(name = "at")` — `at` vẫn là định danh Java hợp lệ (compile bình thường), đổi tên chỉ vì `at` không mô tả tốt ý nghĩa của field so với `occurredAt`.
 - `login_audit.ip` (INET) map bằng `String` + `@JdbcTypeCode(SqlTypes.INET)` theo đúng quy ước chung — round-trip qua Testcontainers Postgres pass ngay lần đầu, không cần fallback `columnDefinition`.
 - `created_at`/`updated_at` (và `login_audit.at`) đều `insertable = false, updatable = false` + `@Generated` — DB giữ giá trị, Hibernate chỉ đọc lại sau flush.
 
