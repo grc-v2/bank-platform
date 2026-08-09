@@ -1,0 +1,44 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body { margin: 0; }
+
+.app { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+header h1 { margin: 0 0 0.25rem; }
+.subtitle { margin: 0 0 1.5rem; opacity: 0.7; font-size: 0.9rem; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 10px;
+  padding: 1rem;
+}
+.card.down { opacity: 0.6; }
+
+.card-head { display: flex; justify-content: space-between; align-items: center; }
+.card-head h2 { margin: 0; font-size: 1.05rem; }
+
+.badge { font-size: 0.75rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 99px; }
+.badge-up { background: #16a34a22; color: #16a34a; }
+.badge-down { background: #dc262622; color: #dc2626; }
+
+.desc { font-size: 0.85rem; opacity: 0.8; margin: 0.5rem 0; }
+
+.row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.15rem 0; }
+.row .label { opacity: 0.6; }
+
+.deps { margin-top: 0.5rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.dep { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 99px; }
+.dep-up { background: #16a34a22; color: #16a34a; }
+.dep-down { background: #dc262622; color: #dc2626; }
+
+.routes { width: 100%; margin-top: 0.6rem; font-size: 0.78rem; border-collapse: collapse; }
+.routes th, .routes td { text-align: left; padding: 0.2rem 0.4rem; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.routes th { opacity: 0.6; border-top: none; }
