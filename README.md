@@ -2,7 +2,7 @@
 
 Monorepo core banking dùng để học nghiệp vụ ngân hàng bằng cách tự xây nó. Spring Boot 4.1 · Java 21 · PostgreSQL 17.
 
-**Đây là base project: không có code nghiệp vụ.** Toàn repo có 6 main class + code nghiệp vụ tăng dần theo feature. Cấu trúc package đã dựng sẵn và rỗng; database đã thiết kế đầy đủ.
+**Đây là base project: khung dựng sẵn đi trước, code nghiệp vụ đắp dần theo từng feature.** Cấu trúc package đã dựng sẵn; database đã thiết kế đầy đủ.
 
 ## Cấu trúc
 
@@ -63,7 +63,7 @@ Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
 (permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
 uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
 Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
-indicator cho Kafka client thường (xem docs/KNOWN-LIMITATIONS.md).
+indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 
 ## Hai mức cấu trúc service
 
