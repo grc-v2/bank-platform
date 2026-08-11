@@ -2,7 +2,7 @@ package io.bankplatform.customer.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.javalibs.test.BaseIntegrationTest;
+import io.bankplatform.customer.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -13,9 +13,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Test full-context: chứng minh endpoint đi qua được javalibs-security mà
  * KHÔNG cần JWT (đây là điều slice test không chứng minh nổi — autoconfigure
- * của javalibs không được nạp trong @WebMvcTest).
+ * của javalibs không được nạp trong @WebMvcTest). Từ khi entity/repository có
+ * mặt, mọi Spring context đều cần schema `customer` tồn tại sẵn trong container
+ * vì `ddl-auto: validate` — nên đổi sang extends AbstractIntegrationTest.
  */
-class ServiceInfoApiTest extends BaseIntegrationTest {
+class ServiceInfoApiTest extends AbstractIntegrationTest {
 
     @Autowired
     TestRestTemplate rest;
