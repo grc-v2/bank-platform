@@ -1,7 +1,13 @@
 package io.bankplatform.corebanking.domain.ledger.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.generator.EventType;
@@ -14,9 +20,9 @@ import java.time.OffsetDateTime;
  * Entity khoản phí thu của tài khoản (schema core_banking).
  * Setters chỉ dành cho trạng thái chuyển giao dịch hạch toán (status, journalEntryId).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "fee_charges")
-public class FeeCharge extends Entity<Long> {
+public class FeeCharge extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

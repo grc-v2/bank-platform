@@ -1,9 +1,8 @@
 package io.bankplatform.corebanking.domain.ledger.model;
 
-import io.javalibs.ddd.Entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
-
+import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
@@ -15,9 +14,9 @@ import java.time.OffsetDateTime;
 /**
  * Entity bảng account_balance_snapshots (schema core_banking). Append-only.
  */
-@jakarta.persistence.Entity
-@jakarta.persistence.Table(name = "account_balance_snapshots")
-public class AccountBalanceSnapshot extends Entity<AccountBalanceSnapshotId> {
+@Entity
+@Table(name = "account_balance_snapshots")
+public class AccountBalanceSnapshot extends io.javalibs.ddd.Entity<AccountBalanceSnapshotId> {
 
     @EmbeddedId
     private AccountBalanceSnapshotId id;

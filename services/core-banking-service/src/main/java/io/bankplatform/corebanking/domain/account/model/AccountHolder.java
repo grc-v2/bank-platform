@@ -1,7 +1,15 @@
 package io.bankplatform.corebanking.domain.account.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
@@ -10,9 +18,9 @@ import java.time.OffsetDateTime;
 /**
  * Entity bảng account_holders (schema core_banking).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "account_holders")
-public class AccountHolder extends Entity<AccountHolderId> {
+public class AccountHolder extends io.javalibs.ddd.Entity<AccountHolderId> {
 
     @EmbeddedId
     private AccountHolderId id;

@@ -1,16 +1,22 @@
 package io.bankplatform.customer.domain.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 
 import java.time.LocalDate;
 
 /**
  * Hồ sơ chi tiết cho khách hàng tổ chức/doanh nghiệp (schema customer).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "organization_details")
-public class OrganizationDetails extends Entity<Long> {
+public class OrganizationDetails extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @Column(name = "customer_id")

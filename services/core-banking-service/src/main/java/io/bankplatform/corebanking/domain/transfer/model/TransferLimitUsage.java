@@ -1,7 +1,11 @@
 package io.bankplatform.corebanking.domain.transfer.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
@@ -12,9 +16,9 @@ import java.time.OffsetDateTime;
 /**
  * Entity theo dõi mức sử dụng hạn mức chuyển tiền của tài khoản (schema core_banking).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "transfer_limit_usage")
-public class TransferLimitUsage extends Entity<Long> {
+public class TransferLimitUsage extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

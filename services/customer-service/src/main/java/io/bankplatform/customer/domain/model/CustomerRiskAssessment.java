@@ -1,7 +1,13 @@
 package io.bankplatform.customer.domain.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.generator.EventType;
@@ -12,9 +18,9 @@ import java.time.OffsetDateTime;
 /**
  * Entity bảng customer_risk_assessments (schema customer). Append-only.
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "customer_risk_assessments")
-public class CustomerRiskAssessment extends Entity<Long> {
+public class CustomerRiskAssessment extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

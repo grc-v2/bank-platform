@@ -1,7 +1,15 @@
 package io.bankplatform.customer.domain.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -10,9 +18,9 @@ import java.time.LocalDate;
 /**
  * Hồ sơ chi tiết cho khách hàng cá nhân (schema customer).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "individual_details")
-public class IndividualDetails extends Entity<Long> {
+public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @Column(name = "customer_id")

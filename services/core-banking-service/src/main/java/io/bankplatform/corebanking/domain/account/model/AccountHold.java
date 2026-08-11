@@ -1,7 +1,13 @@
 package io.bankplatform.corebanking.domain.account.model;
 
-import io.javalibs.ddd.Entity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
@@ -11,9 +17,9 @@ import java.time.OffsetDateTime;
 /**
  * Entity phong tỏa tạm thời tiền trên tài khoản (schema core_banking).
  */
-@jakarta.persistence.Entity
+@Entity
 @Table(name = "account_holds")
-public class AccountHold extends Entity<Long> {
+public class AccountHold extends io.javalibs.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
