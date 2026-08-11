@@ -55,3 +55,15 @@ mvn -pl services/core-banking-service -am spring-boot:run -Dspring-boot.run.prof
 ## Migration
 
 `db/migration/` rỗng, `spring.flyway.enabled=false`. Schema do `docs/database/schema.sql` khối `[5a]`–`[5c]` dựng.
+
+## Persistence (Entity & Repository)
+
+- **Mapping Mức A thực dụng (L2)**: Gắn `@Entity` trực tiếp trên aggregate theo 4 miền (`account`, `ledger`, `transfer`, `shared`).
+- **Composite Key & Column Bỏ Qua**:
+  - `journal_lines`: `@Id` chỉ đặt trên `id` đơn (L3 — composite PK trên DB chứa `created_at` phục vụ partition table). Cột `created_txid` ở `journal_entries` không map Java (L4).
+  - `account_holders` dùng `@EmbeddedId AccountHolderId`, `account_balance_snapshots` dùng `@EmbeddedId AccountBalanceSnapshotId`.
+- **Cột DB sinh**: `accounts.available_balance` (generated stored), `created_at`/`updated_at`/`posted_at`/`placed_at`/`charged_at`/`occurredAt` dùng `@Generated` + `insertable=false, updatable=false` (L5).
+- **Append-only**: `JournalEntry`, `JournalLine`, `AccountBalanceSnapshot`, `AuditLog` không có setter. `InterestAccrual`, `FeeCharge` chỉ có setter cập nhật trạng thái hạch toán.
+- **Bỏ qua bảng**: `outbox` và `processed_events` KHÔNG map Java (L1 — chờ phán quyết `javalibs-datahub`).
+- **Validate schema**: Mọi entity/port được kiểm chứng qua `ddl-auto: validate` với schema PostgreSQL thật trong Testcontainers `CoreBankingPersistenceMappingTest`.
+
