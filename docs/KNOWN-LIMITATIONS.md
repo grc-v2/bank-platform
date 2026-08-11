@@ -142,8 +142,18 @@ còn thêm jar native thì kéo classifier macOS sang cả image Linux chạy CI
   tắt. Mọi tên đều tường minh nên vô hại hôm nay. Đáng lưu ý: tên `uq_*` và `ex_*` trở
   thành **tên index toàn schema**, nên viết tắt làm tăng rủi ro trùng khi thêm bảng.
 
+## Code nghiệp vụ các service
+
+### Đã hoàn thiện JPA Entity + Spring Data Repository cho 5 service nghiệp vụ
+
+- **Phủ toàn bộ 5 service**: `auth-service`, `notification-service`, `product-service`, `customer-service`, `core-banking-service` đã có đầy đủ Entity + Repository, được xác thực bằng Hibernate `ddl-auto: validate` chạy trên PostgreSQL Testcontainers với schema thật từ `docs/database/schema.sql`.
+- **Phạm vi code còn lại**: Các tầng Use-case Service, Controller, DTO, Event Producer/Consumer và Mapper chưa được triển khai (thuộc các phase sau của dự án).
+- **Các bảng hạ tầng bị hoãn**: 3 bảng `outbox` (`customer`, `product`, `core_banking`) và 2 bảng `processed_events` (`notification`, `core_banking`) cố ý **chưa map** (quyết định L1 — chờ thiết kế chính thức của `javalibs-datahub`).
+- **Flyway**: Tiếp tục **tắt** (`spring.flyway.enabled=false`), giữ nguyên cơ chế nạp schema trực tiếp vào container test cho đến phase cắt migration.
+
 ## CI
 
 `.github/workflows/ci.yml` **chưa từng chạy thật** — repo chưa có remote. Workflow đã
 được đọc kỹ và nhất quán với cách repo build (profile `with-libs` mặc định bật, JDK 21,
 probe Postgres qua TCP), nhưng lần push đầu tiên vẫn là lần chạy đầu tiên.
+

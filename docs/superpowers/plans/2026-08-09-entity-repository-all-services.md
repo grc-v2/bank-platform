@@ -249,11 +249,11 @@ class AuthPersistenceMappingTest extends AbstractIntegrationTest {
 }
 ```
 
-- [ ] **Bước 4:** Chạy `mvn -B -P'!with-libs' -pl services/auth-service -am test` → FAIL (compile error — entity chưa có)
-- [ ] **Bước 5:** Viết 3 enum + 3 entity + 3 repository theo schema + quy ước (User có constructor `(String username, String passwordHash)` tự đặt `status = ACTIVE`; LoginAudit constructor `(String username, Long userId, boolean success, String ip, String userAgent)`)
-- [ ] **Bước 6:** Chạy lại lệnh trên → PASS toàn bộ (kể cả ServiceInfoApiTest)
-- [ ] **Bước 7:** Cập nhật README.md của service (mục "Persistence": bảng map, quyết định L8)
-- [ ] **Bước 8:** Commit: `feat(auth): entity + repository schema auth — validate trên schema.sql thật qua Testcontainers`
+- [x] **Bước 4:** Chạy `mvn -B -P'!with-libs' -pl services/auth-service -am test` → FAIL (compile error — entity chưa có)
+- [x] **Bước 5:** Viết 3 enum + 3 entity + 3 repository theo schema + quy ước (User có constructor `(String username, String passwordHash)` tự đặt `status = ACTIVE`; LoginAudit constructor `(String username, Long userId, boolean success, String ip, String userAgent)`)
+- [x] **Bước 6:** Chạy lại lệnh trên → PASS toàn bộ (kể cả ServiceInfoApiTest)
+- [x] **Bước 7:** Cập nhật README.md của service (mục "Persistence": bảng map, quyết định L8)
+- [x] **Bước 8:** Commit: `feat(auth): entity + repository schema auth — validate trên schema.sql thật qua Testcontainers`
 
 ---
 
@@ -289,14 +289,14 @@ public class NotificationPreferenceId implements Serializable {
 
 `user_notification_preferences.updated_at` DB giữ (có trigger riêng — dòng 333). `webhook_endpoints.last_status` `Integer` nullable, `secret` KHÔNG bao giờ log ra (chỉ field thường).
 
-- [ ] **Bước 1:** Đọc schema.sql dòng 235–339 + Quy ước chung
-- [ ] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
-- [ ] **Bước 3:** Viết `NotificationPersistenceMappingTest` (RED). Round-trip: (a) template save→findById assert version/active default từ constructor; (b) notification payload JSONB `{"amount":100000,"currency":"VND"}` → đọc lại assert chứa `"amount"`; (c) attempt với notificationId + attemptNo 1; (d) webhook endpoint; (e) preference composite id save → `findById(new NotificationPreferenceId(9L, "transfer.completed.v1", NotificationChannel.EMAIL))` assert enabled + updatedAt not null
-- [ ] **Bước 4:** Chạy test → FAIL
-- [ ] **Bước 5:** Viết entity/enum/repository
-- [ ] **Bước 6:** Chạy → PASS
-- [ ] **Bước 7:** README (mục Persistence + lý do bỏ `processed_events`)
-- [ ] **Bước 8:** Commit: `feat(notification): entity + repository schema notification — bỏ processed_events chờ phán quyết datahub`
+- [x] **Bước 1:** Đọc schema.sql dòng 235–339 + Quy ước chung
+- [x] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
+- [x] **Bước 3:** Viết `NotificationPersistenceMappingTest` (RED). Round-trip: (a) template save→findById assert version/active default từ constructor; (b) notification payload JSONB `{"amount":100000,"currency":"VND"}` → đọc lại assert chứa `"amount"`; (c) attempt với notificationId + attemptNo 1; (d) webhook endpoint; (e) preference composite id save → `findById(new NotificationPreferenceId(9L, "transfer.completed.v1", NotificationChannel.EMAIL))` assert enabled + updatedAt not null
+- [x] **Bước 4:** Chạy test → FAIL
+- [x] **Bước 5:** Viết entity/enum/repository
+- [x] **Bước 6:** Chạy → PASS
+- [x] **Bước 7:** README (mục Persistence + lý do bỏ `processed_events`)
+- [x] **Bước 8:** Commit: `feat(notification): entity + repository schema notification — bỏ processed_events chờ phán quyết datahub`
 
 ---
 
@@ -316,14 +316,14 @@ public class NotificationPreferenceId implements Serializable {
 
 Điểm gai: 5 bảng con FK `product_id ON DELETE CASCADE` — vẫn map `Long productId` (KHÔNG association hai chiều): catalog đọc nhiều ghi ít, các bảng con được query theo `product_id` + effective date ở phase nghiệp vụ, không cần object graph. Product vì thế không có collection con — ghi rõ trong README (đây là lựa chọn có chủ đích, khác mặc định "aggregate ôm hết"). `annual_rate NUMERIC(9,6)`, `percent NUMERIC(9,6)` → BigDecimal. EXCLUDE constraint (ex_rate_overlap…) không ảnh hưởng mapping nhưng ảnh hưởng **test data**: seed đã có CA_STANDARD/SA_STANDARD/TD_12M kèm rate/fee/limit — test phải tạo product MỚI (`TEST_PROD`) rồi treo bảng con vào đó, không đụng seed. `effective_from` ngày nghiệp vụ → app đặt (constructor nhận, hoặc mặc định `LocalDate.now()` tường minh trong constructor).
 
-- [ ] **Bước 1:** Đọc schema.sql dòng 562–790 + Quy ước chung (đọc kỹ comment EXCLUDE + seed dòng 1492–1551)
-- [ ] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
-- [ ] **Bước 3:** Viết `ProductPersistenceMappingTest` (RED). Round-trip: (a) đọc seed `findByProductCode("CA_STANDARD")` assert category CURRENT_ACCOUNT, status ACTIVE — chứng minh mapping đọc được dữ liệu thật; (b) tạo `TEST_PROD` + 1 rate (tier 0→null, term null, rate 0.012) + 1 fee FLAT 5000 MONTHLY_MAINTENANCE + 1 limit PER_DAY ANY maxAmount 10^9 + 1 rule MIN_AGE GTE "18" + 1 glMapping PRINCIPAL "2010" → flush, clear, đọc lại bằng `findByProductId` assert từng loại
-- [ ] **Bước 4:** Chạy test → FAIL
-- [ ] **Bước 5:** Viết entity/enum/repository
-- [ ] **Bước 6:** Chạy → PASS
-- [ ] **Bước 7:** README (Persistence + lý do không collection con + bỏ outbox)
-- [ ] **Bước 8:** Commit: `feat(product): entity + repository schema product — bảng con tham chiếu productId, không object graph`
+- [x] **Bước 1:** Đọc schema.sql dòng 562–790 + Quy ước chung (đọc kỹ comment EXCLUDE + seed dòng 1492–1551)
+- [x] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
+- [x] **Bước 3:** Viết `ProductPersistenceMappingTest` (RED). Round-trip: (a) đọc seed `findByProductCode("CA_STANDARD")` assert category CURRENT_ACCOUNT, status ACTIVE — chứng minh mapping đọc được dữ liệu thật; (b) tạo `TEST_PROD` + 1 rate (tier 0→null, term null, rate 0.012) + 1 fee FLAT 5000 MONTHLY_MAINTENANCE + 1 limit PER_DAY ANY maxAmount 10^9 + 1 rule MIN_AGE GTE "18" + 1 glMapping PRINCIPAL "2010" → flush, clear, đọc lại bằng `findByProductId` assert từng loại
+- [x] **Bước 4:** Chạy test → FAIL
+- [x] **Bước 5:** Viết entity/enum/repository
+- [x] **Bước 6:** Chạy → PASS
+- [x] **Bước 7:** README (Persistence + lý do không collection con + bỏ outbox)
+- [x] **Bước 8:** Commit: `feat(product): entity + repository schema product — bảng con tham chiếu productId, không object graph`
 
 ---
 
@@ -372,14 +372,14 @@ public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
 - `customer_risk_assessments.reason JSONB` nullable.
 - UNIQUE cần né trong test: `uq_ident (id_type, id_number)`, `uq_address_current (customer_id, address_type) WHERE valid_to IS NULL`, `uq_contact`.
 
-- [ ] **Bước 1:** Đọc schema.sql dòng 341–560 + Quy ước chung
-- [ ] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
-- [ ] **Bước 3:** Viết `CustomerPersistenceMappingTest` (RED). Round-trip: (a) Customer INDIVIDUAL + IndividualDetails + 1 identification NATIONAL_ID + 1 address PERMANENT (validFrom hôm nay, validTo null) + 1 contact EMAIL → save root, flush, clear → `findByCustomerNumber` assert graph đủ (details.firstName, 1 identification, 1 address isPrimary, 1 contact) + createdAt/updatedAt not null; (b) Customer ORGANIZATION + OrganizationDetails (taxCode duy nhất) → assert legalName; (c) KycVerification level 2 MANUAL + 1 KycDocument → save, clear → `findByCustomerIdOrderBySubmittedAtDesc` assert status PENDING + document checksum + submittedAt not null; (d) CustomerRiskAssessment reason JSONB `{"nguon":"test"}` → assert rating + assessedAt not null
-- [ ] **Bước 4:** Chạy test → FAIL
-- [ ] **Bước 5:** Viết entity/enum/port theo schema + quy ước
-- [ ] **Bước 6:** Chạy → PASS
-- [ ] **Bước 7:** README (L2, ranh giới 2 aggregate, lý do không orphanRemoval, bỏ outbox)
-- [ ] **Bước 8:** Commit: `feat(customer): aggregate Customer + KycVerification map JPA thực dụng theo doc javalibs`
+- [x] **Bước 1:** Đọc schema.sql dòng 341–560 + Quy ước chung
+- [x] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
+- [x] **Bước 3:** Viết `CustomerPersistenceMappingTest` (RED). Round-trip: (a) Customer INDIVIDUAL + IndividualDetails + 1 identification NATIONAL_ID + 1 address PERMANENT (validFrom hôm nay, validTo null) + 1 contact EMAIL → save root, flush, clear → `findByCustomerNumber` assert graph đủ (details.firstName, 1 identification, 1 address isPrimary, 1 contact) + createdAt/updatedAt not null; (b) Customer ORGANIZATION + OrganizationDetails (taxCode duy nhất) → assert legalName; (c) KycVerification level 2 MANUAL + 1 KycDocument → save, clear → `findByCustomerIdOrderBySubmittedAtDesc` assert status PENDING + document checksum + submittedAt not null; (d) CustomerRiskAssessment reason JSONB `{"nguon":"test"}` → assert rating + assessedAt not null
+- [x] **Bước 4:** Chạy test → FAIL
+- [x] **Bước 5:** Viết entity/enum/port theo schema + quy ước
+- [x] **Bước 6:** Chạy → PASS
+- [x] **Bước 7:** README (L2, ranh giới 2 aggregate, lý do không orphanRemoval, bỏ outbox)
+- [x] **Bước 8:** Commit: `feat(customer): aggregate Customer + KycVerification map JPA thực dụng theo doc javalibs`
 
 ---
 
@@ -425,9 +425,9 @@ public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
 - **InterestAccrual/FeeCharge**: setter chỉ cho (`posted`, `journalEntryId`) / (`status`, `journalEntryId`) — chuyển trạng thái hạch toán; còn lại bất biến.
 - **AuditLog**: append-only, `detail` JSONB nullable, `at` → `occurredAt` DB giữ.
 
-- [ ] **Bước 1:** Đọc schema.sql dòng 792–1490 + Quy ước chung (các khối comment DB1–DB4, trigger — bắt buộc đọc hết)
-- [ ] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
-- [ ] **Bước 3:** Viết `CoreBankingPersistenceMappingTest` (RED — `@Transactional`, rollback nên trigger DEFERRED không chạy, L10). Round-trip:
+- [x] **Bước 1:** Đọc schema.sql dòng 792–1490 + Quy ước chung (các khối comment DB1–DB4, trigger — bắt buộc đọc hết)
+- [x] **Bước 2:** `AbstractIntegrationTest` + đổi `ServiceInfoApiTest`
+- [x] **Bước 3:** Viết `CoreBankingPersistenceMappingTest` (RED — `@Transactional`, rollback nên trigger DEFERRED không chạy, L10). Round-trip:
   - (a) `GlAccountRepository.findByGlCode("2010")` đọc seed → assert class LIABILITY, normalBalance CREDIT;
   - (b) Account glCode "2010", ledger 500000, hold 200000 → saveAndFlush → assert `availableBalance` = 300000 (Hibernate đọc lại cột GENERATED) + version 0 + createdAt not null; đổi ledger → saveAndFlush → assert version tăng;
   - (c) thêm AccountHolder PRIMARY vào account, save qua root, clear → đọc lại assert holder role + addedAt not null;
@@ -436,11 +436,11 @@ public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
   - (f) Transfer.internal(...) idempotencyKey duy nhất → round-trip `findByIdempotencyKey` + assert status PENDING, version 0; ExternalTransfer cho một transfer EXTERNAL → round-trip saga HOLD_PLACED;
   - (g) AccountBalanceSnapshot composite id hôm nay → `findById(new AccountBalanceSnapshotId(accId, today))`;
   - (h) InterestAccrual accrualDate hôm nay → round-trip finder; FeeCharge PENDING → round-trip; TransferLimitUsage windowStart hôm nay → round-trip `findByAccountIdAndLimitCodeAndWindowStart`; AuditLog detail JSONB → assert occurredAt not null
-- [ ] **Bước 4:** Chạy `mvn -B -P'!with-libs' -pl services/core-banking-service -am test` → FAIL
-- [ ] **Bước 5:** Viết 13 entity + enum + 11 repository theo schema + quy ước (root: Account, GlAccount, JournalEntry, Transfer extends `AggregateRoot<Long>`; ExternalTransfer/AccountHold/InterestAccrual/FeeCharge/AuditLog/TransferLimitUsage/AccountBalanceSnapshot extends `Entity<Long>` hoặc POJO khi id composite; JournalLine/AccountHolder extends `Entity<Long>`-style tùy id)
-- [ ] **Bước 6:** Chạy → PASS (kể cả ServiceInfoApiTest)
-- [ ] **Bước 7:** README (L2, L3, L4, ranh giới aggregate account/ledger/transfer/shared, bỏ outbox + processed_events)
-- [ ] **Bước 8:** Commit: `feat(core-banking): entity + repository sổ cái kép, tài khoản, chuyển tiền — JournalLine map @Id đơn vì PK partition`
+- [x] **Bước 4:** Chạy `mvn -B -P'!with-libs' -pl services/core-banking-service -am test` → FAIL
+- [x] **Bước 5:** Viết 13 entity + enum + 11 repository theo schema + quy ước (root: Account, GlAccount, JournalEntry, Transfer extends `AggregateRoot<Long>`; ExternalTransfer/AccountHold/InterestAccrual/FeeCharge/AuditLog/TransferLimitUsage/AccountBalanceSnapshot extends `Entity<Long>` hoặc POJO khi id composite; JournalLine/AccountHolder extends `Entity<Long>`-style tùy id)
+- [x] **Bước 6:** Chạy → PASS (kể cả ServiceInfoApiTest)
+- [x] **Bước 7:** README (L2, L3, L4, ranh giới aggregate account/ledger/transfer/shared, bỏ outbox + processed_events)
+- [x] **Bước 8:** Commit: `feat(core-banking): entity + repository sổ cái kép, tài khoản, chuyển tiền — JournalLine map @Id đơn vì PK partition`
 
 ---
 
@@ -450,10 +450,10 @@ public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
 - Modify: `docs/KNOWN-LIMITATIONS.md` (dòng ~21: entity/repository đã xong — thu hẹp mục "mọi code nghiệp vụ" còn controller/service/DTO/mapper; thêm mục: outbox/processed_events chưa map — chờ phán quyết datahub; Flyway vẫn tắt theo D5)
 - Modify: `docs/superpowers/plans/2026-08-09-entity-repository-all-services.md` (tick checkbox, ghi chú lệch nếu có)
 
-- [ ] **Bước 1:** Cập nhật `docs/KNOWN-LIMITATIONS.md` đúng thực tế sau 5 task
-- [ ] **Bước 2:** Chạy từ root: `export JAVA_HOME=$(/usr/libexec/java_home -v 21) && mvn -B -P'!with-libs' clean verify` → toàn reactor xanh
-- [ ] **Bước 3:** Soát ledger L1–L10: mỗi quyết định đã được phản ánh trong code/README chưa
-- [ ] **Bước 4:** Commit: `docs: cập nhật KNOWN-LIMITATIONS sau khi phủ entity + repository 5 service`
+- [x] **Bước 1:** Cập nhật `docs/KNOWN-LIMITATIONS.md` đúng thực tế sau 5 task
+- [x] **Bước 2:** Chạy từ root: `export JAVA_HOME=$(/usr/libexec/java_home -v 21) && mvn -B -P'!with-libs' clean verify` → toàn reactor xanh
+- [x] **Bước 3:** Soát ledger L1–L10: mỗi quyết định đã được phản ánh trong code/README chưa
+- [x] **Bước 4:** Commit: `docs: cập nhật KNOWN-LIMITATIONS sau khi phủ entity + repository 5 service`
 
 ## Ghi chú cho reviewer
 

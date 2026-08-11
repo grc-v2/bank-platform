@@ -38,7 +38,7 @@ server:
 javalibs:
   security:
     jwt:
-      secret: ${JWT_SECRET}
+      secret: ${JWT_SECRET:javalibs-test-secret-key-0123456789abcdef}
     # DANH SÁCH NÀY THAY THẾ danh sách mặc định của javalibs-security, không
     # phải nối thêm — nên phải chép lại đủ 7 đường mặc định. Thiếu một dòng là
     # khoá swagger/actuator trong im lặng.
