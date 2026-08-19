@@ -31,3 +31,24 @@ Kiểm tra: <http://localhost:8081/actuator/health> và <http://localhost:8081/s
 ## Migration
 
 `src/main/resources/db/migration/` đang **rỗng** và `spring.flyway.enabled=false`. Schema do `docs/database/schema.sql` dựng. Khi bắt tay vào service này: cắt khối `[2]` của file đó thành migration đầu tiên rồi bật Flyway.
+
+## Persistence
+
+Entity + repository map đủ 3 bảng của schema `auth` (schema.sql khối [2]) — **không có bảng nào bị bỏ qua**:
+
+| Bảng | Entity | Repository |
+|---|---|---|
+| `users` | `model.User` | `repository.UserRepository` (+ `findByUsername`) |
+| `refresh_tokens` | `model.RefreshToken` | `repository.RefreshTokenRepository` (+ `findByTokenHash`) |
+| `login_audit` | `model.LoginAudit` (append-only, không setter) | `repository.LoginAuditRepository` (không finder thêm — L9) |
+
+`user_roles` **không** có entity/repository riêng (quyết định L8): map bằng `@ElementCollection<UserRole>` ngay trên `User` (`@CollectionTable(name = "user_roles")`). Lý do: bảng chỉ có `(user_id, role)`, vòng đời gắn chặt với `User`, và `javalibs-security` lấy role từ JWT lúc runtime chứ không query lại bảng này.
+
+Điểm mapping đáng chú ý khác:
+
+- `refresh_tokens.user_id` và `login_audit.user_id` là cột `Long` thường, KHÔNG association `@ManyToOne` sang `User` — token/audit có vòng đời độc lập với aggregate `User`. `login_audit` cố ý không có FK sang `users` ở tầng DB lẫn Java, để giữ được cả log đăng nhập bằng username không tồn tại.
+- `login_audit.at` (TIMESTAMPTZ, DEFAULT now(), DB giữ) map vào field `occurredAt` qua `@Column(name = "at")` — `at` vẫn là định danh Java hợp lệ (compile bình thường), đổi tên chỉ vì `at` không mô tả tốt ý nghĩa của field so với `occurredAt`.
+- `login_audit.ip` (INET) map bằng `String` + `@JdbcTypeCode(SqlTypes.INET)` theo đúng quy ước chung — round-trip qua Testcontainers Postgres pass ngay lần đầu, không cần fallback `columnDefinition`.
+- `created_at`/`updated_at` (và `login_audit.at`) đều `insertable = false, updatable = false` + `@Generated` — DB giữ giá trị, Hibernate chỉ đọc lại sau flush.
+
+Test mapping: `AuthPersistenceMappingTest` (round-trip từng bảng qua Testcontainers, `docs/database/schema.sql` nạp thật vào container qua `AbstractIntegrationTest`). `ServiceInfoApiTest` cũng đổi sang extends `AbstractIntegrationTest` vì từ nay Spring context nào cũng cần schema `auth` tồn tại sẵn để `ddl-auto: validate` không chết lúc khởi động.

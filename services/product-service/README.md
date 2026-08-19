@@ -28,3 +28,11 @@ mvn -pl services/product-service -am spring-boot:run -Dspring-boot.run.profiles=
 ## Migration
 
 `db/migration/` rỗng, `spring.flyway.enabled=false`. Schema do `docs/database/schema.sql` khối `[4]` dựng.
+
+## Persistence (Entity & Repository)
+
+- **Mapping Mức B**: Entities đặt tại `io.bankplatform.product.model`, Repositories tại `io.bankplatform.product.repository`.
+- **Aggregate và Collection con**: 5 bảng con (`product_interest_rates`, `product_fees`, `product_limits`, `product_eligibility_rules`, `product_gl_mappings`) chỉ giữ `Long productId` (KHÔNG map association 2 chiều hay `@OneToMany` collection trên `Product`). Lý do: Catalog sản phẩm chủ yếu đọc, các bảng con được truy vấn độc lập theo `product_id` + ngày hiệu lực ở phase nghiệp vụ.
+- **Bảng bỏ qua**: `outbox` KHÔNG map (quyết định L1 — chờ phán quyết hạ tầng eventing của `javalibs-datahub`).
+- **Validate schema**: Mọi entity được kiểm chứng qua `ddl-auto: validate` với schema PostgreSQL thật trong Testcontainers `ProductPersistenceMappingTest`.
+

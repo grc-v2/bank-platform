@@ -45,3 +45,11 @@ mvn -pl services/customer-service -am spring-boot:run -Dspring-boot.run.profiles
 ## Migration
 
 `db/migration/` rỗng, `spring.flyway.enabled=false`. Schema do `docs/database/schema.sql` khối `[3]` dựng.
+
+## Persistence (Entity & Repository)
+
+- **Mapping Mức A thực dụng (L2)**: Entities đặt tại `io.bankplatform.customer.domain.model`, Repositories (Ports) tại `io.bankplatform.customer.domain.port`.
+- **Aggregate Root**: `Customer` (ôm `IndividualDetails`, `OrganizationDetails`, `CustomerIdentification`, `CustomerAddress`, `CustomerContact`) và `KycVerification` (ôm `KycDocument`). `CustomerRiskAssessment` là entity append-only độc lập.
+- **Bỏ qua cột/bảng**: Cột `customer_type` ở `individual_details`/`organization_details` không map Java (L4 — DB tự ghim bằng DEFAULT + CHECK). Bảng `outbox` KHÔNG map Java (L1 — chờ phán quyết `javalibs-datahub`).
+- **Validate schema**: Mọi entity/port được kiểm chứng qua `ddl-auto: validate` với schema PostgreSQL thật trong Testcontainers `CustomerPersistenceMappingTest`.
+
