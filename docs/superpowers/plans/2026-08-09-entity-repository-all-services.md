@@ -180,9 +180,9 @@ private Set<UserRole> roles = new HashSet<>();
 
 `refresh_tokens.user_id` → `Long userId` (không association — User là aggregate khác vòng đời token). `login_audit`: append-only, không setter; cột `ip INET` theo quy ước chung; cột `at` → field `occurredAt` (`@Column(name = "at")`), DB giữ; `user_id` nullable; **không FK** sang users (cố ý — giữ được đăng nhập bằng username không tồn tại).
 
-- [ ] **Bước 1:** Đọc schema.sql dòng 167–233 + phần Quy ước chung của plan này
-- [ ] **Bước 2:** Tạo `AbstractIntegrationTest` (mẫu ở Quy ước, `SCHEMA_NAME = "auth"`), đổi `ServiceInfoApiTest` extends nó
-- [ ] **Bước 3:** Viết `AuthPersistenceMappingTest` (RED — chưa compile vì entity chưa tồn tại):
+- [x] **Bước 1:** Đọc schema.sql dòng 167–233 + phần Quy ước chung của plan này
+- [x] **Bước 2:** Tạo `AbstractIntegrationTest` (mẫu ở Quy ước, `SCHEMA_NAME = "auth"`), đổi `ServiceInfoApiTest` extends nó
+- [x] **Bước 3:** Viết `AuthPersistenceMappingTest` (RED — chưa compile vì entity chưa tồn tại):
 
 ```java
 package io.bankplatform.auth;

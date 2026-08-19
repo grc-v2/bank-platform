@@ -1,14 +1,19 @@
 package io.bankplatform.auth;
 
-import io.bankplatform.auth.model.*;
-import io.bankplatform.auth.repository.*;
+import io.bankplatform.auth.model.LoginAudit;
+import io.bankplatform.auth.model.RefreshToken;
+import io.bankplatform.auth.model.User;
+import io.bankplatform.auth.model.UserRole;
+import io.bankplatform.auth.model.UserStatus;
+import io.bankplatform.auth.repository.LoginAuditRepository;
+import io.bankplatform.auth.repository.RefreshTokenRepository;
+import io.bankplatform.auth.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -1,7 +1,19 @@
 package io.bankplatform.notification;
 
-import io.bankplatform.notification.model.*;
-import io.bankplatform.notification.repository.*;
+import io.bankplatform.notification.model.DeliveryAttempt;
+import io.bankplatform.notification.model.DeliveryAttemptStatus;
+import io.bankplatform.notification.model.Notification;
+import io.bankplatform.notification.model.NotificationChannel;
+import io.bankplatform.notification.model.NotificationPreference;
+import io.bankplatform.notification.model.NotificationPreferenceId;
+import io.bankplatform.notification.model.NotificationStatus;
+import io.bankplatform.notification.model.NotificationTemplate;
+import io.bankplatform.notification.model.WebhookEndpoint;
+import io.bankplatform.notification.repository.DeliveryAttemptRepository;
+import io.bankplatform.notification.repository.NotificationPreferenceRepository;
+import io.bankplatform.notification.repository.NotificationRepository;
+import io.bankplatform.notification.repository.NotificationTemplateRepository;
+import io.bankplatform.notification.repository.WebhookEndpointRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
