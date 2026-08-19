@@ -88,26 +88,6 @@ public class ProductInterestRate {
         return effectiveTo;
     }
 
-    public void setTierFrom(BigDecimal tierFrom) {
-        this.tierFrom = tierFrom;
-    }
-
-    public void setTierTo(BigDecimal tierTo) {
-        this.tierTo = tierTo;
-    }
-
-    public void setTermMonths(Integer termMonths) {
-        this.termMonths = termMonths;
-    }
-
-    public void setAnnualRate(BigDecimal annualRate) {
-        this.annualRate = annualRate;
-    }
-
-    public void setEffectiveFrom(LocalDate effectiveFrom) {
-        this.effectiveFrom = effectiveFrom;
-    }
-
     public void setEffectiveTo(LocalDate effectiveTo) {
         this.effectiveTo = effectiveTo;
     }

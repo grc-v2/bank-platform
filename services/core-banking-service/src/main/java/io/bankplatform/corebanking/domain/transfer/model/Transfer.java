@@ -135,7 +135,7 @@ public class Transfer extends AggregateRoot<Long> {
         t.channel = channel;
         t.description = description;
         t.initiatedByUserId = initiatedByUserId;
-        t.status = TransferStatus.PENDING_EXTERNAL;
+        t.status = TransferStatus.PENDING;
         return t;
     }
 

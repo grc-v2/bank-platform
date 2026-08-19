@@ -129,38 +129,6 @@ public class ProductFee {
         return effectiveTo;
     }
 
-    public void setFeeCode(String feeCode) {
-        this.feeCode = feeCode;
-    }
-
-    public void setFeeType(FeeType feeType) {
-        this.feeType = feeType;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
-
-    public void setPercent(BigDecimal percent) {
-        this.percent = percent;
-    }
-
-    public void setMinAmount(BigDecimal minAmount) {
-        this.minAmount = minAmount;
-    }
-
-    public void setMaxAmount(BigDecimal maxAmount) {
-        this.maxAmount = maxAmount;
-    }
-
-    public void setChargeEvent(ChargeEvent chargeEvent) {
-        this.chargeEvent = chargeEvent;
-    }
-
-    public void setEffectiveFrom(LocalDate effectiveFrom) {
-        this.effectiveFrom = effectiveFrom;
-    }
-
     public void setEffectiveTo(LocalDate effectiveTo) {
         this.effectiveTo = effectiveTo;
     }

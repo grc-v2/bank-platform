@@ -245,7 +245,7 @@ class CoreBankingPersistenceMappingTest extends AbstractIntegrationTest {
         assertThat(fetchedInternal.getStatus()).isEqualTo(TransferStatus.PENDING);
 
         Transfer fetchedExternal = transfers.findByTransferReference("TRF_EXT_001").orElseThrow();
-        assertThat(fetchedExternal.getStatus()).isEqualTo(TransferStatus.PENDING_EXTERNAL);
+        assertThat(fetchedExternal.getStatus()).isEqualTo(TransferStatus.PENDING);
 
         ExternalTransfer fetchedSaga = externalTransfers.findByTransferId(fetchedExternal.getId()).orElseThrow();
         assertThat(fetchedSaga.getSagaState()).isEqualTo(SagaState.HOLD_PLACED);

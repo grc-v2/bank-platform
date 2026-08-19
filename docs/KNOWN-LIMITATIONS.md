@@ -148,7 +148,7 @@ còn thêm jar native thì kéo classifier macOS sang cả image Linux chạy CI
 
 - **Phủ toàn bộ 5 service**: `auth-service`, `notification-service`, `product-service`, `customer-service`, `core-banking-service` đã có đầy đủ Entity + Repository, được xác thực bằng Hibernate `ddl-auto: validate` chạy trên PostgreSQL Testcontainers với schema thật từ `docs/database/schema.sql`.
 - **Phạm vi code còn lại**: Các tầng Use-case Service, Controller, DTO, Event Producer/Consumer và Mapper chưa được triển khai (thuộc các phase sau của dự án).
-- **Các bảng hạ tầng bị hoãn**: 3 bảng `outbox` (`customer`, `product`, `core_banking`) và 2 bảng `processed_events` (`notification`, `core_banking`) cố ý **chưa map** (quyết định L1 — chờ thiết kế chính thức của `javalibs-datahub`).
+- **Các bảng hạ tầng bị hoãn**: 3 bảng `outbox` (`customer`, `product`, `core_banking`) và 2 bảng `processed_events` (`notification`, `core_banking`) cố ý **chưa map** (quyết định L1 — chờ phán quyết dùng `javalibs-datahub` (bảng riêng `datahub_outbox_event`/`datahub_processed_event`, cấu trúc khác các bảng `outbox`/`processed_events` hiện có) hay tự viết publisher trên bảng outbox hiện có).
 - **Flyway**: Tiếp tục **tắt** (`spring.flyway.enabled=false`), giữ nguyên cơ chế nạp schema trực tiếp vào container test cho đến phase cắt migration.
 
 ## CI

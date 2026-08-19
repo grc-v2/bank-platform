@@ -74,18 +74,6 @@ public class ProductGlMapping {
         return effectiveTo;
     }
 
-    public void setPurpose(GlMappingPurpose purpose) {
-        this.purpose = purpose;
-    }
-
-    public void setGlCode(String glCode) {
-        this.glCode = glCode;
-    }
-
-    public void setEffectiveFrom(LocalDate effectiveFrom) {
-        this.effectiveFrom = effectiveFrom;
-    }
-
     public void setEffectiveTo(LocalDate effectiveTo) {
         this.effectiveTo = effectiveTo;
     }

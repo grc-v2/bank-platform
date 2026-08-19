@@ -113,30 +113,6 @@ public class ProductLimit {
         return effectiveTo;
     }
 
-    public void setLimitCode(String limitCode) {
-        this.limitCode = limitCode;
-    }
-
-    public void setScope(LimitScope scope) {
-        this.scope = scope;
-    }
-
-    public void setChannel(LimitChannel channel) {
-        this.channel = channel;
-    }
-
-    public void setMaxAmount(BigDecimal maxAmount) {
-        this.maxAmount = maxAmount;
-    }
-
-    public void setMaxCount(Integer maxCount) {
-        this.maxCount = maxCount;
-    }
-
-    public void setEffectiveFrom(LocalDate effectiveFrom) {
-        this.effectiveFrom = effectiveFrom;
-    }
-
     public void setEffectiveTo(LocalDate effectiveTo) {
         this.effectiveTo = effectiveTo;
     }
