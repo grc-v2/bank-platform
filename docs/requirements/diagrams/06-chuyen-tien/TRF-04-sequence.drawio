@@ -1,0 +1,72 @@
+<mxfile>
+  <diagram id="seqlayout" name="TRF-04 — Kiểm soát hạn mức giao dịch (velocity check)">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="core" value="Core Banking" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="100" height="830" as="geometry"/>
+        </mxCell>
+        <mxCell id="prod" value="Product Service" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="100" height="830" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="DB (core_banking)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="440" y="40" width="100" height="830" as="geometry"/>
+        </mxCell>
+        <mxCell id="act0" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="prod">
+          <mxGeometry x="45" y="160" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act1" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="330" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act2" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="560" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" value="TRF-01/02 gọi kiểm hạn mức (account, kênh, amount, ngày) — trong transaction hạch toán đang mở" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1084;entryX=0.5;entryY=0.1446;" edge="1" parent="1" source="core" target="core">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="150" y="130"/><mxPoint x="150" y="160"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m1" value="lấy khuôn hạn mức hiệu lực của sản phẩm (PROD-07)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1928;entryX=0;entryY=0.0;" edge="1" parent="1" source="core" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m2" value="product_limits (ưu tiên kênh cụ thể, rơi về ANY — BR-PROD-04-1)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.253;" edge="1" parent="1" source="act0" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" value="PER_TRANSACTION: so amount ≤ max_amount" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.3133;entryX=0.5;entryY=0.3494;" edge="1" parent="1" source="core" target="core">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="150" y="300"/><mxPoint x="150" y="330"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m4" value="đọc-hoặc-tạo dòng usage của cửa sổ, KHÓA DÒNG (UNIQUE account, limit_code, window_start)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.3976;entryX=0;entryY=0.0;" edge="1" parent="1" source="core" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" value="used_amount, used_count hiện tại" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.4578;" edge="1" parent="1" source="act1" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" value="kiểm used_amount + amount ≤ max_amount và used_count + 1 ≤ max_count" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.5181;entryX=0.5;entryY=0.5542;" edge="1" parent="1" source="core" target="core">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="150" y="470"/><mxPoint x="150" y="500"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note7" value="Vi phạm → trả mã hạn mức + phần còn lại,&#xa;caller từ chối lệnh (transfer FAILED)" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="110" y="520" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m8" value="cập nhật used_amount, used_count — kiểm và trừ nguyên tử (BR-TRF-04-1)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.6747;entryX=0;entryY=0.0;" edge="1" parent="1" source="core" target="act2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m9" value="OK" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.7349;" edge="1" parent="1" source="act2" target="core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m10" value="trả 'đạt' cho luồng chuyển tiền — rollback của caller kéo usage rollback theo" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.7952;entryX=0.5;entryY=0.8313;" edge="1" parent="1" source="core" target="core">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="150" y="700"/><mxPoint x="150" y="730"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note11" value="Giao dịch bị REVERSED sau này KHÔNG hoàn usage (A1) —&#xa;hạn mức đo mức độ hoạt động, chống lách chuyển-hoàn liên tục" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="510" y="750" width="140" height="40" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,66 @@
+<mxfile>
+  <diagram id="seqlayout" name="GL-02 — Ghi bút toán kép (posting engine)">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="src" value="Nghiệp vụ nguồn" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="100" height="770" as="geometry"/>
+        </mxCell>
+        <mxCell id="post" value="Core Banking (posting)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="280" y="40" width="100" height="770" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="DB (core_banking)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="520" y="40" width="100" height="770" as="geometry"/>
+        </mxCell>
+        <mxCell id="act0" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="210" width="10" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="act1" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="post">
+          <mxGeometry x="45" y="90" width="10" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="act2" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="410" width="10" height="210" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" value="gọi hàm posting: lệnh hạch toán (loại GD, value_date, dòng Nợ/Có) — trong transaction nghiệp vụ đang mở" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1169;entryX=0;entryY=0.0;" edge="1" parent="1" source="src" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m1" value="sinh entry_reference duy nhất" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.1351;entryX=1;entryY=0.2162;" edge="1" parent="1" source="act1" target="act1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="390" y="180"/><mxPoint x="390" y="210"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m2" value="INSERT journal_entries (header: transaction_type, value_date, booking_date, source_type/source_id)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.3243;entryX=0;entryY=0.0;" edge="1" parent="1" source="act1" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" value="INSERT journal_lines từng dòng (line_no, gl_code, account_id?, direction, amount &gt; 0, currency)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.4595;entryX=0;entryY=0.3333;" edge="1" parent="1" source="act1" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" value="UPDATE accounts.ledger_balance ± theo chiều (optimistic lock accounts.version) cho mỗi dòng có account_id" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.5946;entryX=0;entryY=0.6667;" edge="1" parent="1" source="act1" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" value="số dư mới (hoặc lỗi: ck_accounts_available / version trượt)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=1;entryY=0.7297;" edge="1" parent="1" source="act0" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" value="ghi balance_after vào dòng tương ứng" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.8649;entryX=0;entryY=0.0;" edge="1" parent="1" source="act1" target="act2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m7" value="entry_id — header + dòng + số dư đã ghi CÙNG transaction" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.5974;" edge="1" parent="1" source="act1" target="src">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m8" value="COMMIT transaction nghiệp vụ" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.6623;entryX=0;entryY=0.4762;" edge="1" parent="1" source="src" target="act2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note9" value="Trigger DEFERRED trg_journal_balanced kiểm tại COMMIT:&#xa;≥ 2 dòng, tổng Nợ = tổng Có, một loại tiền,&#xa;không dính GL tổng hợp, loại tiền dòng khớp tài khoản.&#xa;Vi phạm → rollback TOÀN BỘ, không có bút toán ghi dở." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="590" y="580" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m10" value="COMMIT thành công (hoặc rollback toàn bộ nếu vi phạm)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.8052;" edge="1" parent="1" source="act2" target="src">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note11" value="Sổ cái append-only: UPDATE/DELETE bút toán,&#xa;chèn dòng vào bút toán đã commit bị trg_*_immutable từ chối.&#xa;Sửa sổ duy nhất bằng bút toán đảo (GL-03)." style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="350" y="690" width="180" height="40" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

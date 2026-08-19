@@ -1,0 +1,30 @@
+<mxfile host="app.diagrams.net" modified="2026-08-20T00:00:00.000Z" agent="usecasegen" version="24.0.0">
+  <diagram id="usecase" name="Nhóm I — Vận hành, đối chiếu &amp; tuân thủ">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1"
+        connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600"
+        pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bound" value="xuyên suốt các service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=14;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="320" y="40" width="300" height="552" as="geometry" /></mxCell>
+        <mxCell id="a_ops" value="Ops / DBA" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="184" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_auditor" value="Auditor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="368" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_sys" value="Hệ thống&#xa;(job / publisher)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="780" y="276" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="u_OPS-01" value="OPS-01&#xa;Phát sự kiện tin cậy (outbox)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="90" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_OPS-02" value="OPS-02&#xa;Nhật ký kiểm toán (audit log)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="188" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_OPS-03" value="OPS-03&#xa;Lịch cuối ngày (EOD)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="286" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_OPS-04" value="OPS-04&#xa;Quản lý partition sổ cái" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="384" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_OPS-05" value="OPS-05&#xa;Giám sát &amp; dashboard vận hành" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="482" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="e1" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_OPS-01"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_OPS-02"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_auditor" target="u_OPS-02"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_OPS-03"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_ops" target="u_OPS-03"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_OPS-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_ops" target="u_OPS-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_ops" target="u_OPS-05"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" value="&#171;include&#187;" style="endArrow=open;endFill=0;dashed=1;html=1;rounded=0;strokeColor=#666666;fontSize=11;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u_OPS-03" target="u_OPS-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

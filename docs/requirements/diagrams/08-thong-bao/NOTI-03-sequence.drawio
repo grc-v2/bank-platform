@@ -1,0 +1,75 @@
+<mxfile>
+  <diagram id="seqlayout" name="NOTI-03 — Gửi thông báo &amp; retry đa kênh">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="noti" value="Notification Service" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="100" height="870" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="DB (notification)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="350" y="40" width="100" height="870" as="geometry"/>
+        </mxCell>
+        <mxCell id="kenh" value="Kênh gửi (Telegram/SMTP/Webhook)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="660" y="40" width="100" height="870" as="geometry"/>
+        </mxCell>
+        <mxCell id="act0" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="90" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act1" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="kenh">
+          <mxGeometry x="45" y="320" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act2" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="kenh">
+          <mxGeometry x="45" y="580" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act3" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="420" width="10" height="360" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" value="quét idx_noti_pending, lấy lô PENDING theo thứ tự tạo" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1034;entryX=0;entryY=0.0;" edge="1" parent="1" source="noti" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m1" value="danh sách thông báo (nội dung đã render sẵn)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.1609;" edge="1" parent="1" source="act0" target="noti">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m2" value="ưu tiên giao dịch/OTP trước (SLA OTP ≤ 30 giây)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.2184;entryX=0.5;entryY=0.2529;" edge="1" parent="1" source="noti" target="noti">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="150" y="230"/><mxPoint x="150" y="260"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note3" value="Webhook: ký HMAC-SHA256 payload bằng secret của endpoint,&#xa;gửi kèm header chữ ký (NOTI-05)" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="110" y="280" width="250" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" value="gửi nội dung qua adapter kênh" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.3678;entryX=0;entryY=0.0;" edge="1" parent="1" source="noti" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" value="kết quả (thành công / lỗi tạm / lỗi vĩnh viễn)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.4253;" edge="1" parent="1" source="act1" target="noti">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" value="ghi delivery_attempts (attempt_no tăng liên tục, kết quả, lỗi)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.4828;entryX=0;entryY=0.0;" edge="1" parent="1" source="noti" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m7" value="thành công: notifications.status = SENT" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.5402;entryX=0;entryY=0.1389;" edge="1" parent="1" source="noti" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note8" value="Lỗi tạm (timeout, 5xx, rate limit): retry backoff lũy tiến&#xa;1 phút, 5 phút, 30 phút… tối đa 5 lần.&#xa;Lỗi vĩnh viễn (4xx, địa chỉ không tồn tại): FAILED ngay" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="110" y="540" width="250" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m9" value="lần thử kế sau backoff (nếu lỗi tạm)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.6667;entryX=0;entryY=0.0;" edge="1" parent="1" source="noti" target="act2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m10" value="kết quả lần thử kế" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.7241;" edge="1" parent="1" source="act2" target="noti">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m11" value="hết lượt / lỗi vĩnh viễn: status = FAILED" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.7816;entryX=0;entryY=0.7222;" edge="1" parent="1" source="noti" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m12" value="webhook: cập nhật last_status/last_checked_at của endpoint" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.8391;entryX=0;entryY=0.8611;" edge="1" parent="1" source="noti" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m13" value="OK — lịch sử attempt là nguyên liệu dashboard NOTI-06" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.8966;" edge="1" parent="1" source="act3" target="noti">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

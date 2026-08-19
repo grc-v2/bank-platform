@@ -1,0 +1,88 @@
+<mxfile>
+  <diagram id="seqlayout" name="CUST-09 — Đánh giá rủi ro khách hàng">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="ro" value="Risk Officer" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;participant=umlActor;verticalAlign=bottom;spacingBottom=-14;labelBackgroundColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="100" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="gw" value="Gateway" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="100" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="cust" value="Customer Service" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="440" y="40" width="100" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="DB (customer)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="640" y="40" width="100" height="960" as="geometry"/>
+        </mxCell>
+        <mxCell id="act0" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="230" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act1" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="330" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act2" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="db">
+          <mxGeometry x="45" y="660" width="10" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="act3" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="cust">
+          <mxGeometry x="45" y="540" width="10" height="220" as="geometry"/>
+        </mxCell>
+        <mxCell id="act4" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="gw">
+          <mxGeometry x="45" y="490" width="10" height="320" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" value="nhận tín hiệu KYC vừa duyệt (nội bộ service)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.0938;entryX=0.5;entryY=0.125;" edge="1" parent="1" source="cust" target="cust">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="550" y="130"/><mxPoint x="550" y="160"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m1" value="chấm điểm 0–100 theo bộ tiêu chí tham số: loại khách, nghề nghiệp, quốc tịch, độ đầy đủ hồ sơ" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1667;entryX=0.5;entryY=0.1979;" edge="1" parent="1" source="cust" target="cust">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="550" y="200"/><mxPoint x="550" y="230"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m2" value="INSERT customer_risk_assessments (score, rating, reason JSONB, assessed_by = NULL)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.2396;entryX=0;entryY=0.0;" edge="1" parent="1" source="cust" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" value="OK" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.2917;" edge="1" parent="1" source="act0" target="cust">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" value="UPDATE customers.risk_rating = rating mới" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.3438;entryX=0;entryY=0.0;" edge="1" parent="1" source="cust" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m5" value="OK" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.3958;" edge="1" parent="1" source="act1" target="cust">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note6" value="Append-only (BR-CUST-09-1, BR-G6):&#xa;không sửa / xóa dòng đánh giá cũ;&#xa;hạng hiện hành = dòng mới nhất" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="710" y="450" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m7" value="override thủ công: nhập score / rating + căn cứ" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.5104;entryX=0;entryY=0.0;" edge="1" parent="1" source="ro" target="act4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m8" value="chuyển tiếp (quyền Risk Officer)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.1562;entryX=0;entryY=0.0;" edge="1" parent="1" source="act4" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m9" value="kiểm reason ghi đủ căn cứ tính điểm (BR-CUST-09-2)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.2273;entryX=1;entryY=0.3636;" edge="1" parent="1" source="act3" target="act3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="550" y="630"/><mxPoint x="550" y="660"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m10" value="INSERT dòng mới (assessed_by = Risk Officer) + UPDATE customers.risk_rating" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.5455;entryX=0;entryY=0.0;" edge="1" parent="1" source="act3" target="act2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m11" value="OK" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=1;entryY=0.7727;" edge="1" parent="1" source="act2" target="act3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m12" value="200 — hạng hiện hành mới" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=1;entryY=0.8438;" edge="1" parent="1" source="act3" target="act4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m13" value="đánh giá đã ghi nhận" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.8438;" edge="1" parent="1" source="act4" target="ro">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note14" value="Rating HIGH → cảnh báo CSO cân nhắc đình chỉ (CUST-10);&#xa;rating lan truyền qua payload event&#xa;kyc.approved.v1 / status.changed.v1 (BR-CUST-09-3)" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="510" y="880" width="140" height="40" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

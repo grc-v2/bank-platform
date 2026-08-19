@@ -1,0 +1,68 @@
+<mxfile>
+  <diagram id="seqlayout" name="AUTH-09 — Xác thực &amp; định tuyến tại gateway">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="client" value="Client (kênh)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="100" height="800" as="geometry"/>
+        </mxCell>
+        <mxCell id="gw" value="Gateway" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="100" height="800" as="geometry"/>
+        </mxCell>
+        <mxCell id="svc" value="Customer Service" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;size=40;" vertex="1" parent="1">
+          <mxGeometry x="440" y="40" width="100" height="800" as="geometry"/>
+        </mxCell>
+        <mxCell id="act0" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="svc">
+          <mxGeometry x="45" y="410" width="10" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="act1" value="" style="html=1;points=[];perimeter=orthogonalPerimeter;outlineConnect=0;fillColor=#ffffff;" vertex="1" parent="gw">
+          <mxGeometry x="45" y="90" width="10" height="560" as="geometry"/>
+        </mxCell>
+        <mxCell id="m0" value="GET /api/customers/... (Authorization: Bearer access_token)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=0.5;exitY=0.1125;entryX=0;entryY=0.0;" edge="1" parent="1" source="client" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m1" value="kiểm rate limit theo IP/user (E1 — vượt → 429)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.0893;entryX=1;entryY=0.1429;" edge="1" parent="1" source="act1" target="act1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="350" y="180"/><mxPoint x="350" y="210"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m2" value="xác minh chữ ký + hạn + định dạng JWT (stateless, không gọi Auth Service)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.2143;entryX=1;entryY=0.2679;" edge="1" parent="1" source="act1" target="act1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="350" y="250"/><mxPoint x="350" y="280"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="note3" value="E2 — token thiếu/sai/hết hạn → 401 ngay tại cửa&#xa;(trừ endpoint công khai: đăng ký, đăng nhập,&#xa;refresh, health/info — BR-AUTH-09-1)" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="310" y="300" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="m4" value="gắn user_id + roles vào header nội bộ, xóa header giả mạo của client" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.4464;entryX=1;entryY=0.5;" edge="1" parent="1" source="act1" target="act1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="350" y="380"/><mxPoint x="350" y="410"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m5" value="định tuyến theo path prefix (E4 — không khớp route → 404)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.5714;entryX=0;entryY=0.0;" edge="1" parent="1" source="act1" target="act0">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m6" value="kiểm vai trò theo ma trận phân quyền (defense in depth)" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.2632;entryX=1;entryY=0.4211;" edge="1" parent="1" source="act0" target="act0">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="550" y="500"/><mxPoint x="550" y="530"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m7" value="xử lý nghiệp vụ" style="html=1;verticalAlign=bottom;endArrow=block;curved=0;rounded=0;exitX=1;exitY=0.6316;entryX=1;entryY=0.7895;" edge="1" parent="1" source="act0" target="act0">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="550" y="570"/><mxPoint x="550" y="600"/></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m8" value="kết quả xử lý" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=1;entryY=0.9107;" edge="1" parent="1" source="act0" target="act1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="m9" value="200 OK" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;curved=0;rounded=0;strokeColor=#999999;fontColor=#999999;exitX=0;exitY=1.0;entryX=0.5;entryY=0.8125;" edge="1" parent="1" source="act1" target="client">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="note10" value="BR-AUTH-09-3 — gateway không log token,&#xa;không log body chứa credential" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="310" y="720" width="140" height="40" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

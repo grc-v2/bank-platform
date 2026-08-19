@@ -1,0 +1,52 @@
+<mxfile host="app.diagrams.net" modified="2026-08-20T00:00:00.000Z" agent="usecasegen" version="24.0.0">
+  <diagram id="usecase" name="Nhóm B — Khách hàng &amp; KYC">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1"
+        connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600"
+        pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bound" value="customer-service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=14;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="320" y="40" width="580" height="650" as="geometry" /></mxCell>
+        <mxCell id="a_kh" value="Khách hàng" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="217" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_teller" value="Teller" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="433" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_cso" value="CSO" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1060" y="130" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_risk" value="Risk Officer" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1060" y="260" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_admin" value="Admin" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1060" y="390" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_sys" value="Hệ thống&#xa;(job / event)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1060" y="520" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-01" value="CUST-01&#xa;Mở hồ sơ khách hàng cá nhân" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="90" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-02" value="CUST-02&#xa;Mở hồ sơ khách hàng tổ chức" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="188" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-03" value="CUST-03&#xa;Cập nhật liên hệ &amp; địa chỉ" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="286" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-04" value="CUST-04&#xa;Quản lý giấy tờ định danh" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="384" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-05" value="CUST-05&#xa;Xác minh kênh liên hệ (OTP)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="482" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-06" value="CUST-06&#xa;Nộp hồ sơ KYC" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="580" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-07" value="CUST-07&#xa;Thẩm định &amp; phê duyệt KYC" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="90" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-08" value="CUST-08&#xa;Theo dõi hiệu lực KYC &amp; tái KYC" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="188" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-09" value="CUST-09&#xa;Đánh giá rủi ro khách hàng" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="286" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-10" value="CUST-10&#xa;Đình chỉ / kích hoạt lại / đóng hồ sơ" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="384" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-11" value="CUST-11&#xa;Liên kết hồ sơ với user online" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="482" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_CUST-12" value="CUST-12&#xa;Tra cứu hồ sơ 360°" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="640" y="580" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="e1" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_CUST-01"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-01"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-02"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_CUST-03"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-03"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_CUST-05"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_CUST-06"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-06"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_cso" target="u_CUST-07"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_CUST-08"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_risk" target="u_CUST-09"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_CUST-09"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_cso" target="u_CUST-10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_admin" target="u_CUST-10"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-11"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_CUST-12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_CUST-12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_cso" target="u_CUST-12"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" value="&#171;include&#187;" style="endArrow=open;endFill=0;dashed=1;html=1;rounded=0;strokeColor=#666666;fontSize=11;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=1;entryY=0.65;" edge="1" parent="1" source="u_CUST-01" target="u_CUST-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" value="&#171;include&#187;" style="endArrow=open;endFill=0;dashed=1;html=1;rounded=0;strokeColor=#666666;fontSize=11;labelBackgroundColor=#ffffff;edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.35;" edge="1" parent="1" source="u_CUST-07" target="u_CUST-09"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

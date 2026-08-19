@@ -1,0 +1,39 @@
+<mxfile host="app.diagrams.net" modified="2026-08-20T00:00:00.000Z" agent="usecasegen" version="24.0.0">
+  <diagram id="usecase" name="Nhóm E — Tài khoản tiền gửi">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1"
+        connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600"
+        pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bound" value="core-banking-service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=14;spacingTop=8;" vertex="1" parent="1"><mxGeometry x="320" y="40" width="300" height="846" as="geometry" /></mxCell>
+        <mxCell id="a_kh" value="Khách hàng" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="282" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_teller" value="Teller" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="80" y="564" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_cso" value="CSO" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="780" y="282" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="a_sys" value="Hệ thống&#xa;(job / event)" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontSize=13;" vertex="1" parent="1"><mxGeometry x="780" y="564" width="40" height="80" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-01" value="ACCT-01&#xa;Mở tài khoản thanh toán / tiết kiệm" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="90" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-02" value="ACCT-02&#xa;Mở tiền gửi có kỳ hạn" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="188" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-03" value="ACCT-03&#xa;Đồng chủ tài khoản &amp; ủy quyền" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="286" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-04" value="ACCT-04&#xa;Truy vấn số dư &amp; thông tin" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="384" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-05" value="ACCT-05&#xa;Phong tỏa &amp; trạng thái tài khoản" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="482" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-06" value="ACCT-06&#xa;Quản lý khoản treo (hold)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="580" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-07" value="ACCT-07&#xa;Đóng tài khoản / tất toán" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="678" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="u_ACCT-08" value="ACCT-08&#xa;Sao kê &amp; lịch sử giao dịch" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1"><mxGeometry x="360" y="776" width="220" height="70" as="geometry" /></mxCell>
+        <mxCell id="e1" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_ACCT-01"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_ACCT-01"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_ACCT-02"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_ACCT-02"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_ACCT-03"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_ACCT-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_ACCT-04"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_cso" target="u_ACCT-05"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_ACCT-05"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_cso" target="u_ACCT-06"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_sys" target="u_ACCT-06"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_ACCT-07"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_teller" target="u_ACCT-07"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" style="endArrow=none;html=1;rounded=0;strokeColor=#4d4d4d;" edge="1" parent="1" source="a_kh" target="u_ACCT-08"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
