@@ -16,7 +16,7 @@ import java.time.LocalDate;
  */
 @Entity
 @Table(name = "organization_details")
-public class OrganizationDetails extends io.javalibs.ddd.Entity<Long> {
+public class OrganizationDetails extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @Column(name = "customer_id")

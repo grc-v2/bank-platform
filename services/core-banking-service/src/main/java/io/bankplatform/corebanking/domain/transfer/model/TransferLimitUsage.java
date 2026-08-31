@@ -18,7 +18,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "transfer_limit_usage")
-public class TransferLimitUsage extends io.javalibs.ddd.Entity<Long> {
+public class TransferLimitUsage extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

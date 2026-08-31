@@ -19,7 +19,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "kyc_documents")
-public class KycDocument extends io.javalibs.ddd.Entity<Long> {
+public class KycDocument extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

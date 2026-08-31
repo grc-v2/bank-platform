@@ -30,7 +30,7 @@ Entity + repository map 5/6 bảng của schema `notification` (schema.sql khố
 | `webhook_endpoints` | `model.WebhookEndpoint` | `repository.WebhookEndpointRepository` (+ `findByUserIdAndUrl`) |
 | `user_notification_preferences` | `model.NotificationPreference` (`@EmbeddedId model.NotificationPreferenceId`) | `repository.NotificationPreferenceRepository` |
 
-**`processed_events` KHÔNG được map** (quyết định L1 của kế hoạch entity+repository toàn hệ thống). Đây là bảng hạ tầng của vòng idempotent-consumer — `javalibs-datahub` (`IdempotentEventProcessor`) dùng bảng riêng (`datahub_processed_event`) khác cấu trúc, nên map bây giờ là đoán trước một quyết định (dùng datahub hay tự viết consumer) chưa được phân xử. Hibernate `ddl-auto: validate` không đụng bảng không map nên không ảnh hưởng khởi động. Sẽ map lại khi phase dùng-datahub-hay-không được chốt.
+**`processed_events` KHÔNG được map** (quyết định L1 của kế hoạch entity+repository toàn hệ thống). Đây là bảng hạ tầng của vòng idempotent-consumer, mà hạ tầng đó chưa tồn tại: `javalibs-datahub` đã gỡ cùng platform-libs và bản thay thế chưa viết. Map bây giờ là đoán trước hình dạng của một cơ chế chưa thiết kế. Hibernate `ddl-auto: validate` không đụng bảng không map nên không ảnh hưởng khởi động. Sẽ map lại khi viết consumer thật.
 
 Điểm mapping đáng chú ý khác:
 

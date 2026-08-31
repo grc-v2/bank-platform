@@ -21,6 +21,12 @@ spring:
     default-schema: core_banking
     clean-disabled: true
 
+  # Property CHẾT: Kafka client (spring-kafka) không còn trên classpath sau
+  # khi gỡ platform-libs — không có KafkaAutoConfiguration nào để bind khối
+  # này. compose.yaml vẫn dựng broker nhưng không service nào kết nối. Giữ
+  # lại vì đã ghi tài liệu (xem docs/KNOWN-LIMITATIONS.md, mục "Kafka client
+  # không còn trên classpath"). Xử khi: thêm lại spring-boot-kafka +
+  # spring-kafka vào pom.xml.
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     consumer:
@@ -29,25 +35,6 @@ spring:
 
 server:
   port: 8084
-
-javalibs:
-  security:
-    jwt:
-      secret: ${JWT_SECRET}
-    # DANH SÁCH NÀY THAY THẾ danh sách mặc định của javalibs-security, không
-    # phải nối thêm — nên phải chép lại đủ 7 đường mặc định. Thiếu một dòng là
-    # khoá swagger/actuator trong im lặng.
-    permit-all:
-      - /actuator/health
-      - /actuator/health/**
-      - /actuator/info
-      - /error
-      - /v3/api-docs/**
-      - /swagger-ui/**
-      - /swagger-ui.html
-      # info công khai có chủ đích: chưa có luồng phát JWT, và payload chỉ là
-      # metadata dev (không secret, không connection string).
-      - /api/accounts/info
 
 management:
   endpoints:

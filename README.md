@@ -8,8 +8,7 @@ Monorepo core banking dùng để học nghiệp vụ ngân hàng bằng cách t
 
 | Module | Vai trò | Cổng | Schema |
 |---|---|---|---|
-| `platform-libs/` | [javalibs](https://github.com/tanvx-training/javalibs-4.1) nhúng nguyên vẹn — **không sửa** | | |
-| `bank-common/` | Value object nghiệp vụ, hợp đồng event, hằng số | | |
+| `services/bank-common` | Value object nghiệp vụ, hợp đồng event, hằng số | | |
 | `services/gateway-service` | Định tuyến tập trung | 8080 | — |
 | `services/auth-service` | Định danh, token | 8081 | `auth` |
 | `services/customer-service` | CIF, KYC, đánh giá rủi ro | 8082 | `customer` |
@@ -22,12 +21,6 @@ Monorepo core banking dùng để học nghiệp vụ ngân hàng bằng cách t
 ```bash
 docker compose up -d
 mvn clean install
-```
-
-Lần build đầu đi qua cả javalibs (khoảng 40 artifact). Những lần sau, khi javalibs đã nằm trong local repo:
-
-```bash
-mvn -P'!with-libs' clean install
 ```
 
 Chạy một service:
@@ -60,8 +53,10 @@ cd frontend && npm install && npm run dev
 ```
 
 Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
-(permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
-uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
+(không còn xác thực nào trên toàn hệ thống — xem docs/KNOWN-LIMITATIONS.md,
+mục "Security bằng 0" — nên `/info` gọi được như mọi endpoint khác) trả
+metadata dev: version, cổng, schema, uptime, trạng thái hạ tầng. Route qua
+gateway: xem thẻ gateway trên dashboard.
 Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
 indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 
@@ -74,10 +69,10 @@ indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 
 Trong Mức A: **từ 3 aggregate trở lên thì chia `domain/` và `application/` theo aggregate trước, theo loại sau** (`core-banking` chia; `customer` giữ phẳng).
 
-Chi tiết ở `platform-libs/docs/project-structure.md`.
+Chi tiết ở bản `platform-libs` cũ (đã gỡ, xem `git show b095cd5:platform-libs/docs/project-structure.md`).
 
 ## Tài liệu
 
 - Thiết kế: `docs/superpowers/specs/2026-08-06-bank-platform-base-design.md`
 - Kế hoạch triển khai: `docs/superpowers/plans/2026-08-06-bank-platform-base.md`
-- javalibs: `platform-libs/docs/index.md`
+- Nợ kỹ thuật để lại sau khi gỡ platform-libs: `docs/KNOWN-LIMITATIONS.md`

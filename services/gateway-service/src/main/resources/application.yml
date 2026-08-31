@@ -60,11 +60,10 @@ management:
         # ĐỪNG HIỂU NHẦM "prometheus" (đã kiểm, ghi ra để không ai tưởng bở): mục này
         # HIỆN CHƯA có tác dụng ở BẤT KỲ service nào trong repo. Endpoint
         # /actuator/prometheus chỉ ra đời khi classpath có một Prometheus registry
-        # (micrometer-registry-prometheus) — mà không service nào có:
-        # javalibs-observability-spring-boot-starter chỉ kéo spring-boot-starter-actuator
-        # + micrometer core + tracing bridge OTel. `dependency:tree` của gateway và của
-        # product đều không có dòng nào khớp "prometheus", và /actuator/prometheus trên
-        # gateway trả 404.
+        # (micrometer-registry-prometheus) — mà không service nào có: mỗi service tự
+        # khai spring-boot-starter-actuator, không kéo theo registry Prometheus.
+        # `dependency:tree` của gateway và của product đều không có dòng nào khớp
+        # "prometheus", và /actuator/prometheus trên gateway trả 404.
         # Vẫn giữ "prometheus" ở đây để danh sách khớp năm service kia và để endpoint
         # tự sống dậy ngay khi ai đó thêm registry. Nhưng muốn Prometheus scrape được
         # THẬT thì phải thêm registry cho cả sáu service — đó là việc riêng, chưa làm.

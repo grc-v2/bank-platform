@@ -1,3 +1,0 @@
-io.javalibs.web.autoconfigure.WebAutoConfiguration
-io.javalibs.web.autoconfigure.RequestLoggingAutoConfiguration
-io.javalibs.web.autoconfigure.CorsAutoConfiguration

@@ -18,7 +18,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "audit_log")
-public class AuditLog extends io.javalibs.ddd.Entity<Long> {
+public class AuditLog extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

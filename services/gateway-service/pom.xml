@@ -14,8 +14,9 @@
   <artifactId>gateway-service</artifactId>
   <name>bank-platform :: gateway-service</name>
   <description>
-    Cổng vào duy nhất cho frontend. CHỈ định tuyến — không nghiệp vụ, không DB,
-    không javalibs. Mỗi service phía sau vẫn tự kiểm JWT.
+    Cổng vào duy nhất cho frontend. CHỈ định tuyến — không nghiệp vụ, không DB.
+    Từ 2026-09-01 không service nào phía sau kiểm JWT nữa (xem README và
+    docs/KNOWN-LIMITATIONS.md).
   </description>
 
   <properties>

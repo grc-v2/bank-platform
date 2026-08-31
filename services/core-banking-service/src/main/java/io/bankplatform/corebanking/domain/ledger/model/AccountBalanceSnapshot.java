@@ -16,7 +16,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "account_balance_snapshots")
-public class AccountBalanceSnapshot extends io.javalibs.ddd.Entity<AccountBalanceSnapshotId> {
+public class AccountBalanceSnapshot extends io.bankplatform.common.ddd.Entity<AccountBalanceSnapshotId> {
 
     @EmbeddedId
     private AccountBalanceSnapshotId id;

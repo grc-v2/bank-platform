@@ -19,7 +19,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "account_holds")
-public class AccountHold extends io.javalibs.ddd.Entity<Long> {
+public class AccountHold extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

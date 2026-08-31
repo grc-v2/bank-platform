@@ -8,14 +8,14 @@
 
 ## Vì sao Mức B chứ không phải DDD
 
-`javalibs-security` đã lo phần khó: parse token, filter, `UserContext`, `@RequireRole`, rotation + reuse detection của refresh token. Phần còn lại của service này là CRUD người dùng và vai trò — trả giá DDD ở đây là trả giá cho một bài toán không có.
+Trước đây `javalibs-security` lo phần khó (parse token, filter, `UserContext`, `@RequireRole`, rotation + reuse detection của refresh token). Thư viện đó đã gỡ, và phần đó **chưa được viết lại** — xem docs/KNOWN-LIMITATIONS.md. Phần còn lại của service này là CRUD người dùng và vai trò — trả giá DDD ở đây là trả giá cho một bài toán không có.
 
 Nếu về sau phần nghiệp vụ dày lên (chính sách mật khẩu, MFA, khóa tài khoản theo quy tắc), nâng lên Mức A là bình thường và **không phải đổi starter nào**.
 
 ## Quy tắc tối thiểu vẫn phải giữ
 
 - Controller không chứa nghiệp vụ.
-- Exception ném ra là `ApiException` / `ResourceNotFoundException` của javalibs — **đừng tự viết `GlobalExceptionHandler`**, javalibs đã có.
+- Chưa có `GlobalExceptionHandler` nào: `javalibs-web` đã gỡ và bản thay thế chưa viết. Exception ném ra hiện trả định dạng lỗi mặc định của Spring Boot. Viết `@RestControllerAdvice` là việc cần làm — xem docs/KNOWN-LIMITATIONS.md.
 - Mọi mã lỗi khai trong `ERROR-CODES.md` và class `AuthErrors`.
 - `config/` lý tưởng là **rỗng**. Có bean trong đó nghĩa là service này lệch chuẩn ở chỗ nào đó — reviewer sẽ hỏi.
 
@@ -42,7 +42,7 @@ Entity + repository map đủ 3 bảng của schema `auth` (schema.sql khối [2
 | `refresh_tokens` | `model.RefreshToken` | `repository.RefreshTokenRepository` (+ `findByTokenHash`) |
 | `login_audit` | `model.LoginAudit` (append-only, không setter) | `repository.LoginAuditRepository` (không finder thêm — L9) |
 
-`user_roles` **không** có entity/repository riêng (quyết định L8): map bằng `@ElementCollection<UserRole>` ngay trên `User` (`@CollectionTable(name = "user_roles")`). Lý do: bảng chỉ có `(user_id, role)`, vòng đời gắn chặt với `User`, và `javalibs-security` lấy role từ JWT lúc runtime chứ không query lại bảng này.
+`user_roles` **không** có entity/repository riêng (quyết định L8): map bằng `@ElementCollection<UserRole>` ngay trên `User` (`@CollectionTable(name = "user_roles")`). Lý do: bảng chỉ có `(user_id, role)`, vòng đời gắn chặt với `User`, và role được lấy từ JWT lúc runtime chứ không query lại bảng này (khi dựng lại xác thực).
 
 Điểm mapping đáng chú ý khác:
 
