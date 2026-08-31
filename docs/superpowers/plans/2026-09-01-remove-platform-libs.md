@@ -138,7 +138,7 @@ springdoc là artifact **duy nhất** không được `spring-boot-starter-paren
     <springdoc.version>3.1.0</springdoc.version>
 ```
 
-Và vào `<dependencyManagement><dependencies>` của root pom, **thay thế** khối `javalibs-dependencies` (xoá nó ở đây luôn, đỡ phải quay lại ở Task 7):
+Và **thêm** vào `<dependencyManagement><dependencies>` của root pom, đặt **trước** khối `javalibs-dependencies` đang có:
 
 ```xml
       <dependency>
@@ -148,9 +148,13 @@ Và vào `<dependencyManagement><dependencies>` của root pom, **thay thế** k
       </dependency>
 ```
 
-Xoá luôn property `<javalibs.version>2.0.0-SNAPSHOT</javalibs.version>`.
-
-> Root pom giờ không còn tham chiếu javalibs nào **trừ** profile `with-libs` (Task 7 xoá). Reactor vẫn build được vì `platform-libs` tự khai version cho chính nó.
+> ⚠️ **KHÔNG xoá BOM `javalibs-dependencies` hay property `javalibs.version` ở task này.**
+> Năm service đang khai `io.javalibs:javalibs-*` **không có `<version>`** — version tới hoàn
+> toàn từ BOM đó. Xoá BOM bây giờ là cả 5 service mất version và Step 11 dưới đây đỏ ngay.
+> BOM và property bị xoá ở **Task 7**, sau khi Task 2–6 đã dọn hết service.
+>
+> Đã kiểm `javalibs-dependencies` KHÔNG quản springdoc (`grep -ci springdoc` = 0), nên hai
+> khối không tranh chấp. Vẫn đặt springdoc trước cho chắc.
 
 - [ ] **Step 3: Viết test thất bại cho Entity**
 
@@ -516,7 +520,7 @@ nằm ở thư viện ngoài `platform-libs` (javalibs). Thư viện đó đã b
 cd /Users/tanvx/Dev/bank-platform && export JAVA_HOME=$(/usr/libexec/java_home -v 21) && mvn -o clean install -DskipTests
 ```
 
-Kỳ vọng: BUILD SUCCESS, 24 module (17 javalibs + bank-common + 6 service). `bank-common` xuất hiện với đường dẫn `services/bank-common`.
+Kỳ vọng: BUILD SUCCESS, và trong danh sách reactor `bank-common` xuất hiện ở đường dẫn `services/bank-common` (không phải `bank-common`). platform-libs vẫn build cùng — đúng như mong đợi ở task này.
 
 - [ ] **Step 12: Commit**
 
@@ -558,6 +562,7 @@ Service đầu tiên chuyển. Làm kỹ ở đây, năm task sau chỉ là nhâ
 - Modify: `services/auth-service/src/test/resources/application-test.yml`
 - Modify: `services/auth-service/src/main/java/io/bankplatform/auth/web/ServiceInfoController.java`
 - Modify: `services/auth-service/src/test/java/io/bankplatform/auth/AbstractIntegrationTest.java`
+- Modify: `services/auth-service/README.md`
 - Test: `services/auth-service/src/test/java/io/bankplatform/auth/web/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -831,6 +836,24 @@ Và sửa Javadoc của lớp — hai câu hiện tại nhắc `javalibs-securit
  */
 ```
 
+- [ ] **Step 6b: Sửa README của auth-service**
+
+`services/auth-service/README.md` có ba chỗ nhắc javalibs, trong đó **một chỗ là chỉ dẫn nay đã sai và gây hại thật**.
+
+Dòng 11 — thay:
+
+```markdown
+Trước đây `javalibs-security` lo phần khó (parse token, filter, `UserContext`, `@RequireRole`, rotation + reuse detection của refresh token). Thư viện đó đã gỡ, và phần đó **chưa được viết lại** — xem docs/KNOWN-LIMITATIONS.md. Phần còn lại của service này là CRUD người dùng và vai trò — trả giá DDD ở đây là trả giá cho một bài toán không có.
+```
+
+Dòng 18 — chỉ dẫn cũ nói "đừng tự viết `GlobalExceptionHandler`, javalibs đã có", giờ dẫn người đọc đi sai vì không còn handler nào. Thay:
+
+```markdown
+- Chưa có `GlobalExceptionHandler` nào: `javalibs-web` đã gỡ và bản thay thế chưa viết. Exception ném ra hiện trả định dạng lỗi mặc định của Spring Boot. Viết `@RestControllerAdvice` là việc cần làm — xem docs/KNOWN-LIMITATIONS.md.
+```
+
+Dòng 45 — cụm "`javalibs-security` lấy role từ JWT lúc runtime chứ không query lại bảng này" thay bằng "role được lấy từ JWT lúc runtime chứ không query lại bảng này (khi dựng lại xác thực)". Giữ nguyên phần còn lại của câu.
+
 - [ ] **Step 7: Chạy test — phải XANH y như Step 1**
 
 ```bash
@@ -895,6 +918,7 @@ EOF
 - Modify: `services/product-service/src/main/java/io/bankplatform/product/web/ServiceInfoController.java`
 - Modify: `services/product-service/src/main/java/io/bankplatform/product/ProductApplication.java`
 - Modify: `services/product-service/src/test/java/io/bankplatform/product/AbstractIntegrationTest.java`
+- Modify: `services/product-service/README.md`
 - Test: `services/product-service/src/test/java/io/bankplatform/product/web/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1015,6 +1039,14 @@ Thân test giữ nguyên. Javadoc lớp hiện nói "chứng minh endpoint đi q
  */
 ```
 
+- [ ] **Step 7b: Sửa README của product-service**
+
+`services/product-service/README.md` dòng 36 nói bảng `outbox` không map vì "chờ phán quyết hạ tầng eventing của `javalibs-datahub`". Thư viện đó không còn, nên lý do đã đổi. Thay cụm đó bằng:
+
+```markdown
+- **Bảng bỏ qua**: `outbox` KHÔNG map (quyết định L1 — chưa có hạ tầng eventing nào. `javalibs-datahub` đã gỡ cùng platform-libs; sẽ quyết lại khi viết luồng publish event đầu tiên).
+```
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1067,6 +1099,7 @@ EOF
 - Modify: `services/customer-service/src/main/java/io/bankplatform/customer/api/ServiceInfoController.java`
 - Modify: 9 file trong `services/customer-service/src/main/java/io/bankplatform/customer/domain/model/`
 - Modify: `services/customer-service/src/test/java/io/bankplatform/customer/AbstractIntegrationTest.java`
+- Modify: `services/customer-service/README.md`
 - Test: `services/customer-service/src/test/java/io/bankplatform/customer/api/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1177,6 +1210,14 @@ Và trong Javadoc đổi "auth-service" → "customer-service", `schema \`auth\`
  */
 ```
 
+- [ ] **Step 7b: Sửa README của customer-service**
+
+`services/customer-service/README.md` có hai chỗ nhắc javalibs:
+
+Dòng 11 — cụm "đúng như tài liệu javalibs" không còn tài liệu nào để trỏ tới. Xoá cụm đó, câu thành: "Dưới ngưỡng 3 aggregate nên giữ bố cục phẳng `domain/{model,rule,event,port}` — chia theo aggregate lúc này chỉ tạo thêm thư mục mà không làm rõ thêm điều gì."
+
+Dòng 53 — thay cụm "(L1 — chờ phán quyết `javalibs-datahub`)" bằng "(L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs)".
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1226,6 +1267,7 @@ EOF
 - Modify: `services/core-banking-service/src/main/java/io/bankplatform/corebanking/api/ServiceInfoController.java`
 - Modify: 13 file trong `services/core-banking-service/src/main/java/io/bankplatform/corebanking/domain/`
 - Modify: `services/core-banking-service/src/test/java/io/bankplatform/corebanking/AbstractIntegrationTest.java`
+- Modify: `services/core-banking-service/README.md`
 - Test: `services/core-banking-service/src/test/java/io/bankplatform/corebanking/api/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1323,6 +1365,22 @@ Javadoc đổi "auth-service" → "core-banking-service", `schema \`auth\`` → 
  */
 ```
 
+- [ ] **Step 7b: Sửa README của core-banking-service**
+
+`services/core-banking-service/README.md` có **bốn** chỗ nhắc javalibs — nhiều nhất repo:
+
+Dòng 17 — mô tả dependency của tầng domain, nay sai. Thay:
+
+```markdown
+- `domain` **không import gì** ngoài JDK, `bank-common` (`io.bankplatform.common.ddd`), và JPA. Không Spring, không Kafka. Nhờ vậy unit test domain chạy bằng mili-giây.
+```
+
+Dòng 25 — "Tài liệu javalibs minh họa `domain/{model,event,rule}` phẳng" không còn tài liệu để trỏ. Thay cụm đầu câu bằng "Bố cục phẳng `domain/{model,event,rule}` đúng cho ví dụ chỉ có một aggregate."
+
+Dòng 31 — cụm "và dùng được ngay `javalibs-search`" phải xoá; thay bằng "và dùng được ngay `JpaSpecificationExecutor` của Spring Data JPA".
+
+Dòng 67 — thay "(L1 — chờ phán quyết `javalibs-datahub`)" bằng "(L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs)".
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1370,6 +1428,7 @@ EOF
 - Modify: `services/notification-service/src/test/resources/application-test.yml`
 - Modify: `services/notification-service/src/main/java/io/bankplatform/notification/web/ServiceInfoController.java`
 - Modify: `services/notification-service/src/test/java/io/bankplatform/notification/AbstractIntegrationTest.java`
+- Modify: `services/notification-service/README.md`
 - Test: `services/notification-service/src/test/java/io/bankplatform/notification/web/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1457,6 +1516,14 @@ Javadoc đổi "auth-service" → "notification-service", `schema \`auth\`` → 
  */
 ```
 
+- [ ] **Step 6b: Sửa README của notification-service**
+
+`services/notification-service/README.md` dòng 33 giải thích vì sao `processed_events` không được map, dựa trên việc `javalibs-datahub` có bảng riêng `datahub_processed_event`. Lý do đó không còn. Thay cả đoạn bằng:
+
+```markdown
+**`processed_events` KHÔNG được map** (quyết định L1 của kế hoạch entity+repository toàn hệ thống). Đây là bảng hạ tầng của vòng idempotent-consumer, mà hạ tầng đó chưa tồn tại: `javalibs-datahub` đã gỡ cùng platform-libs và bản thay thế chưa viết. Map bây giờ là đoán trước hình dạng của một cơ chế chưa thiết kế. Hibernate `ddl-auto: validate` không đụng bảng không map nên không ảnh hưởng khởi động. Sẽ map lại khi viết consumer thật.
+```
+
 - [ ] **Step 7: Chạy test — phải XANH**
 
 ```bash
@@ -1503,6 +1570,7 @@ Task cuối. Sau task này `grep -rn javalibs` toàn repo chỉ còn những ch�
 - Delete: `platform-libs/` (431 file tracked)
 - Modify: `pom.xml`
 - Modify: `services/gateway-service/src/main/java/io/bankplatform/gateway/web/dto/ApiEnvelope.java`
+- Modify: `services/gateway-service/README.md`
 - Modify: `.env.sample`
 - Modify: `.github/workflows/ci.yml`
 - Modify: `README.md`
@@ -1517,7 +1585,15 @@ Task cuối. Sau task này `grep -rn javalibs` toàn repo chỉ còn những ch�
 cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" --exclude-dir=.git --exclude-dir=platform-libs --exclude-dir=node_modules . | grep -v "^./docs/superpowers/"
 ```
 
-Kỳ vọng: chỉ còn `pom.xml` (profile `with-libs`), `.github/workflows/ci.yml`, `README.md`, `docs/KNOWN-LIMITATIONS.md`, và comment ở `ApiEnvelope.java`. **Không** file nào dưới `services/*/src/`. Nếu còn, quay lại task tương ứng.
+Kỳ vọng — chỉ được còn năm nhóm sau:
+
+1. `pom.xml` — property `javalibs.version`, BOM import, profile `with-libs` (Step 3 xoá)
+2. `.github/workflows/ci.yml` — comment về `with-libs` (Step 6 xoá)
+3. `README.md` gốc (Step 7)
+4. `services/gateway-service/src/main/java/.../ApiEnvelope.java` và `services/gateway-service/README.md` (Step 4, 4b)
+5. `services/*/README.md` — những câu Task 2–6 **cố ý** viết để nhắc lịch sử ("`javalibs-datahub` đã gỡ cùng platform-libs")
+
+**Không** file nào dưới `services/*/src/` được còn. Nếu còn, quay lại task tương ứng thay vì sửa ở đây.
 
 - [ ] **Step 2: Xoá platform-libs**
 
@@ -1525,9 +1601,15 @@ Kỳ vọng: chỉ còn `pom.xml` (profile `with-libs`), `.github/workflows/ci.y
 cd /Users/tanvx/Dev/bank-platform && git rm -r --quiet platform-libs && git status --short | head -5
 ```
 
-- [ ] **Step 3: Xoá profile `with-libs` khỏi root pom**
+- [ ] **Step 3: Xoá mọi dấu vết javalibs khỏi root pom**
 
-Xoá **toàn bộ** khối `<profiles>...</profiles>` ở cuối `pom.xml` (gồm cả comment dài giải thích vì sao là profile "thêm vào"). Root pom sau bước này không còn chữ `javalibs` nào.
+Ba chỗ, xoá cả ba (Task 1 cố ý để lại BOM và property vì 5 service lúc đó còn cần chúng):
+
+1. Property `<javalibs.version>2.0.0-SNAPSHOT</javalibs.version>` trong `<properties>`.
+2. Khối `<dependency>` import BOM `io.javalibs:javalibs-dependencies` trong `<dependencyManagement>`. **Giữ nguyên** hai khối còn lại ở đó (`springdoc-openapi-starter-webmvc-ui` và `bank-common`).
+3. **Toàn bộ** khối `<profiles>...</profiles>` ở cuối file, gồm cả comment dài giải thích vì sao là profile "thêm vào".
+
+Sau bước này `grep -c javalibs pom.xml` phải trả `0`.
 
 Đồng thời sửa `<description>` — nó đang nói repo gồm platform-libs:
 
@@ -1544,6 +1626,20 @@ Xoá **toàn bộ** khối `<profiles>...</profiles>` ở cuối `pom.xml` (gồ
 ```
 
 Giữ nguyên phần còn lại của câu (lý do gateway không phụ thuộc bank-common).
+
+- [ ] **Step 4b: Sửa README của gateway-service**
+
+`services/gateway-service/README.md` có hai chỗ, dòng 10 là chỗ mô tả sai một cơ chế bảo mật — loại nguy hiểm nhất.
+
+Dòng 3 — xoá cụm ", không dùng javalibs" (giờ không service nào dùng, nói riêng gateway là vô nghĩa).
+
+Dòng 10 — thay cả đoạn "Xác thực nằm ở đâu" bằng:
+
+```markdown
+Gateway **không** kiểm JWT, và từ 2026-09-01 **cũng không service nào phía sau kiểm** — Spring Security đã gỡ cùng platform-libs (xem docs/KNOWN-LIMITATIONS.md). Hiện toàn hệ thống không có xác thực.
+
+Khi dựng lại: đặt việc kiểm token ở **từng service**, không phải ở gateway. Gateway kiểm hộ thì bất kỳ ai gọi thẳng vào service (trong cùng cluster) đều bỏ qua được xác thực. Gateway chỉ là tiện ích định tuyến, không phải ranh giới tin cậy.
+```
 
 - [ ] **Step 5: Gỡ JWT_SECRET khỏi .env.sample**
 
@@ -1660,11 +1756,21 @@ Kỳ vọng: BUILD SUCCESS, không test nào lỗi hay bị skip.
 
 - [ ] **Step 11: Xác nhận repo sạch javalibs**
 
+Hai phép kiểm. Thứ nhất — không còn **code** nào dính javalibs:
+
 ```bash
-cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" --exclude-dir=.git --exclude-dir=node_modules . | grep -v "docs/superpowers/\|docs/KNOWN-LIMITATIONS.md\|services/bank-common/README.md"
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" --exclude-dir=.git --exclude-dir=node_modules --include='*.java' --include='*.xml' --include='*.yml' --include='*.yaml' .
 ```
 
-Kỳ vọng: **rỗng**. Ba đường dẫn được loại trừ là nơi cố ý nhắc tới lịch sử.
+Kỳ vọng: **rỗng tuyệt đối**.
+
+Thứ hai — trong tài liệu, mọi chỗ còn nhắc javalibs phải là câu **cố ý** nói về lịch sử:
+
+```bash
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.superpowers --include='*.md' . | grep -v "docs/superpowers/"
+```
+
+Kỳ vọng: mỗi dòng in ra đều đọc được thành một câu về quá khứ ("đã gỡ", "trước đây", `git show b095cd5:...`). Dòng nào mô tả javalibs như thứ **đang** hoạt động là lỗi — sửa ngay.
 
 - [ ] **Step 12: Khởi động thật một service**
 
