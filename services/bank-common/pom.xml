@@ -8,7 +8,7 @@
     <groupId>io.bankplatform</groupId>
     <artifactId>bank-platform</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
   <artifactId>bank-common</artifactId>
@@ -20,7 +20,24 @@
   </description>
 
   <!--
-    Cố ý KHÔNG có <dependencies>. Thêm dependency vào module này là thêm nó vào
-    cả sáu service cùng lúc — cân nhắc thật kỹ trước khi làm.
+    KHÔNG có dependency compile nào, và phải giữ như vậy: thêm một dependency
+    compile ở đây là thêm nó vào cả sáu module cùng lúc.
+
+    Hai dependency dưới đây ở scope test — chúng KHÔNG lan sang consumer, nên
+    không phá cam kết trên. Cố ý KHÔNG dùng spring-boot-starter-test: module này
+    là Java thuần, kéo cả Spring vào classpath test sẽ che mất việc lỡ tay import
+    Spring trong src/main.
   -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>
