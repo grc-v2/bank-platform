@@ -5,7 +5,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.cache.annotation.EnableCaching;
 
-/** {@code @EnableCaching} vì service này dùng javalibs-cache cho catalog. */
+/**
+ * {@code @EnableCaching} để cache catalog sản phẩm. Cache backend là Redis:
+ * spring-boot-starter-cache + spring-boot-starter-data-redis đủ để Boot tự
+ * chọn RedisCacheManager. Chưa có @Cacheable nào — bật sẵn để khi thêm không
+ * phải đụng lớp khởi động.
+ */
 @SpringBootApplication
 @EnableCaching
 @ConfigurationPropertiesScan
