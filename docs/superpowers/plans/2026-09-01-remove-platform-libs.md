@@ -1802,10 +1802,30 @@ Trường `traceId` của `ApiResponse` luôn `null`; log không có MDC để n
 của cùng một request. Trường vẫn giữ trong record để khi dựng filter không phải
 đổi hợp đồng JSON với frontend.
 
-### Không có cấu hình CORS
+### Không còn log request mặc định
 
-Frontend gọi thẳng service (không qua gateway) sẽ bị chặn. Hiện frontend đi qua
-gateway nên chưa lộ ra.
+`RequestLoggingAutoConfiguration` của `javalibs-web` đăng ký filter log mọi
+request/response và **mặc định bật** — `@ConditionalOnProperty(prefix =
+"javalibs.web.logging", name = "enabled", havingValue = "true", matchIfMissing = true)`,
+đã kiểm trên source. Bộ starter thay thế không có gì tương đương, và không test
+nào assert nó, nên mất im lặng.
+
+Hệ quả: không còn access-log cho mỗi HTTP call. Cùng với mục correlation-id ở
+trên, khả năng quan sát của cả 5 service hiện bằng 0.
+
+Xử khi: viết filter log đầu tiên — nên làm cùng lúc với correlation-id, hai thứ
+này chỉ hữu ích khi đi cùng nhau.
+
+### CORS: KHÔNG mất gì
+
+Ghi lại để không ai đi tìm nhầm. `CorsAutoConfiguration` của `javalibs-web` là
+**opt-in**: `@ConditionalOnProperty(prefix = "javalibs.web.cors", name = "enabled",
+havingValue = "true")` — không có `matchIfMissing`. Chưa service nào từng đặt
+property đó (đã grep toàn bộ `application*.yml`). Nghĩa là **trước khi gỡ javalibs
+cũng đã không có cấu hình CORS nào hoạt động** — đây không phải hồi quy.
+
+Frontend hiện đi qua gateway nên chưa cần. Khi nào gọi thẳng service thì phải tự
+cấu hình CORS, nhưng đó là việc mới.
 
 ### AggregateRoot không có cơ chế domain event
 

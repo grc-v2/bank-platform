@@ -63,7 +63,7 @@ tác thuần cơ học.
 
 | javalibs | Thay bằng | Mất gì thật sự |
 |---|---|---|
-| `javalibs-web-spring-boot-starter` | `spring-boot-starter-webmvc` + `spring-boot-starter-validation` | Global exception handler → envelope lỗi; request logging; cấu hình CORS |
+| `javalibs-web-spring-boot-starter` | `spring-boot-starter-webmvc` + `spring-boot-starter-validation` | Global exception handler → envelope lỗi; request logging (cả hai mặc định bật). KHÔNG mất CORS: `CorsAutoConfiguration` là opt-in và chưa service nào bật |
 | `javalibs-security-spring-boot-starter`, `javalibs-security-issuer`, `javalibs-security-test` | *(bỏ hẳn)* | JWT + permit-all → **mọi endpoint mở**; `JwtTestFactory`, `TestUserContexts` |
 | `javalibs-openapi-spring-boot-starter` | `springdoc-openapi-starter-webmvc-ui` | Tự điền title/version/security scheme cho OpenAPI |
 | `javalibs-observability-spring-boot-starter` | `spring-boot-starter-actuator` | Correlation-id filter + MDC; bỏ luôn `micrometer-tracing-bridge-otel` (chưa ai dùng) |
@@ -164,7 +164,12 @@ Cần cập nhật README ở hai chỗ nữa: mục "KHÔNG được nằm ở 
   `application.yml` hiện chỉ là metadata hiển thị, chưa có cơ chế nào dùng.
 - **Không có correlation-id.** Trường `traceId` của `ApiResponse` luôn `null`; log không
   có MDC để nối các dòng của cùng một request.
-- **Không có cấu hình CORS.** Frontend gọi thẳng service (không qua gateway) sẽ bị chặn.
+- **Không còn log request mặc định.** `RequestLoggingAutoConfiguration` của `javalibs-web`
+  mặc định bật (`matchIfMissing = true`) và đăng ký filter log mọi request/response. Không
+  test nào assert nó nên mất im lặng.
+- **CORS: không mất gì.** `CorsAutoConfiguration` là opt-in (`havingValue = "true"`, không
+  `matchIfMissing`) và chưa service nào bật — trước khi gỡ cũng đã không có CORS nào chạy.
+  Bản spec đầu ghi đây là mất mát; sai, đã sửa sau khi kiểm source.
 - **Mất lưới an toàn Flyway.** `clean-disabled` và kiểm quy ước tên migration phải tự
   cấu hình lại khi bật Flyway. `spring.flyway.clean-disabled: true` đã có sẵn trong yml,
   nhưng phần kiểm tên migration thì không.
