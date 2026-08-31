@@ -935,6 +935,7 @@ EOF
 - Modify: `services/product-service/src/main/java/io/bankplatform/product/ProductApplication.java`
 - Modify: `services/product-service/src/test/java/io/bankplatform/product/AbstractIntegrationTest.java`
 - Modify: `services/product-service/README.md`
+- Modify: `services/product-service/ERROR-CODES.md`
 - Test: `services/product-service/src/test/java/io/bankplatform/product/web/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1063,6 +1064,24 @@ Thân test giữ nguyên. Javadoc lớp hiện nói "chứng minh endpoint đi q
 - **Bảng bỏ qua**: `outbox` KHÔNG map (quyết định L1 — chưa có hạ tầng eventing nào. `javalibs-datahub` đã gỡ cùng platform-libs; sẽ quyết lại khi viết luồng publish event đầu tiên).
 ```
 
+- [ ] **Bước dọn: javalibs còn sót ngoài danh sách Files**
+
+Hai file nữa nhắc javalibs mà các step trên không đụng tới. Cả hai đều mô tả cơ chế nay không còn.
+
+**`services/product-service/ERROR-CODES.md`** dòng 3 nói mã lỗi khai bằng `BusinessErrorCode.of(...)` và "javalibs tự đưa vào OpenAPI docs". `BusinessErrorCode` là kiểu của javalibs, và class `io.bankplatform.product.web.ProductErrors` **chưa từng được viết** (đã kiểm: không file nào trong repo dùng `BusinessErrorCode`). Thay dòng 3 bằng:
+
+```markdown
+Prefix: `ERR-PROD-xxx`. **Chưa có cơ chế mã lỗi nào trong code**: `BusinessErrorCode` là kiểu của javalibs (đã gỡ cùng platform-libs) và class `io.bankplatform.product.web.ProductErrors` chưa từng được viết. Bảng dưới là hợp đồng đặt trước — sẽ nối vào code khi dựng `@RestControllerAdvice` đầu tiên, xem docs/KNOWN-LIMITATIONS.md.
+```
+
+**Quét lần cuối** — mọi dòng còn lại phải là câu cố ý nói về quá khứ, hoặc phải sửa:
+
+```bash
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" services/product-service/
+```
+
+Chú ý riêng `src/main/java/**/*Application.java` và các comment trong entity: một số nói "không cần `@Import`/`@ComponentScan` cho javalibs" hoặc "javalibs-security lấy role từ JWT" — đều mô tả cơ chế đã biến mất, phải viết lại theo hiện trạng.
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1116,6 +1135,7 @@ EOF
 - Modify: 9 file trong `services/customer-service/src/main/java/io/bankplatform/customer/domain/model/`
 - Modify: `services/customer-service/src/test/java/io/bankplatform/customer/AbstractIntegrationTest.java`
 - Modify: `services/customer-service/README.md`
+- Modify: `services/customer-service/ERROR-CODES.md`
 - Test: `services/customer-service/src/test/java/io/bankplatform/customer/api/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1234,6 +1254,24 @@ Dòng 11 — cụm "đúng như tài liệu javalibs" không còn tài liệu n�
 
 Dòng 53 — thay cụm "(L1 — chờ phán quyết `javalibs-datahub`)" bằng "(L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs)".
 
+- [ ] **Bước dọn: javalibs còn sót ngoài danh sách Files**
+
+Hai file nữa nhắc javalibs mà các step trên không đụng tới. Cả hai đều mô tả cơ chế nay không còn.
+
+**`services/customer-service/ERROR-CODES.md`** dòng 3 nói mã lỗi khai bằng `BusinessErrorCode.of(...)` và "javalibs tự đưa vào OpenAPI docs". `BusinessErrorCode` là kiểu của javalibs, và class `io.bankplatform.customer.api.CustomerErrors` **chưa từng được viết** (đã kiểm: không file nào trong repo dùng `BusinessErrorCode`). Thay dòng 3 bằng:
+
+```markdown
+Prefix: `ERR-CUST-xxx`. **Chưa có cơ chế mã lỗi nào trong code**: `BusinessErrorCode` là kiểu của javalibs (đã gỡ cùng platform-libs) và class `io.bankplatform.customer.api.CustomerErrors` chưa từng được viết. Bảng dưới là hợp đồng đặt trước — sẽ nối vào code khi dựng `@RestControllerAdvice` đầu tiên, xem docs/KNOWN-LIMITATIONS.md.
+```
+
+**Quét lần cuối** — mọi dòng còn lại phải là câu cố ý nói về quá khứ, hoặc phải sửa:
+
+```bash
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" services/customer-service/
+```
+
+Chú ý riêng `src/main/java/**/*Application.java` và các comment trong entity: một số nói "không cần `@Import`/`@ComponentScan` cho javalibs" hoặc "javalibs-security lấy role từ JWT" — đều mô tả cơ chế đã biến mất, phải viết lại theo hiện trạng.
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1284,6 +1322,7 @@ EOF
 - Modify: 13 file trong `services/core-banking-service/src/main/java/io/bankplatform/corebanking/domain/`
 - Modify: `services/core-banking-service/src/test/java/io/bankplatform/corebanking/AbstractIntegrationTest.java`
 - Modify: `services/core-banking-service/README.md`
+- Modify: `services/core-banking-service/ERROR-CODES.md`
 - Test: `services/core-banking-service/src/test/java/io/bankplatform/corebanking/api/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1397,6 +1436,24 @@ Dòng 31 — cụm "và dùng được ngay `javalibs-search`" phải xoá; thay
 
 Dòng 67 — thay "(L1 — chờ phán quyết `javalibs-datahub`)" bằng "(L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs)".
 
+- [ ] **Bước dọn: javalibs còn sót ngoài danh sách Files**
+
+Hai file nữa nhắc javalibs mà các step trên không đụng tới. Cả hai đều mô tả cơ chế nay không còn.
+
+**`services/core-banking-service/ERROR-CODES.md`** dòng 3 nói mã lỗi khai bằng `BusinessErrorCode.of(...)` và "javalibs tự đưa vào OpenAPI docs". `BusinessErrorCode` là kiểu của javalibs, và class `io.bankplatform.corebanking.api.CoreBankingErrors` **chưa từng được viết** (đã kiểm: không file nào trong repo dùng `BusinessErrorCode`). Thay dòng 3 bằng:
+
+```markdown
+Prefix: `ERR-CORE-xxx`. **Chưa có cơ chế mã lỗi nào trong code**: `BusinessErrorCode` là kiểu của javalibs (đã gỡ cùng platform-libs) và class `io.bankplatform.corebanking.api.CoreBankingErrors` chưa từng được viết. Bảng dưới là hợp đồng đặt trước — sẽ nối vào code khi dựng `@RestControllerAdvice` đầu tiên, xem docs/KNOWN-LIMITATIONS.md.
+```
+
+**Quét lần cuối** — mọi dòng còn lại phải là câu cố ý nói về quá khứ, hoặc phải sửa:
+
+```bash
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" services/core-banking-service/
+```
+
+Chú ý riêng `src/main/java/**/*Application.java` và các comment trong entity: một số nói "không cần `@Import`/`@ComponentScan` cho javalibs" hoặc "javalibs-security lấy role từ JWT" — đều mô tả cơ chế đã biến mất, phải viết lại theo hiện trạng.
+
 - [ ] **Step 8: Chạy test — phải XANH**
 
 ```bash
@@ -1445,6 +1502,7 @@ EOF
 - Modify: `services/notification-service/src/main/java/io/bankplatform/notification/web/ServiceInfoController.java`
 - Modify: `services/notification-service/src/test/java/io/bankplatform/notification/AbstractIntegrationTest.java`
 - Modify: `services/notification-service/README.md`
+- Modify: `services/notification-service/ERROR-CODES.md`
 - Test: `services/notification-service/src/test/java/io/bankplatform/notification/web/ServiceInfoApiTest.java`
 
 **Interfaces:**
@@ -1539,6 +1597,24 @@ Javadoc đổi "auth-service" → "notification-service", `schema \`auth\`` → 
 ```markdown
 **`processed_events` KHÔNG được map** (quyết định L1 của kế hoạch entity+repository toàn hệ thống). Đây là bảng hạ tầng của vòng idempotent-consumer, mà hạ tầng đó chưa tồn tại: `javalibs-datahub` đã gỡ cùng platform-libs và bản thay thế chưa viết. Map bây giờ là đoán trước hình dạng của một cơ chế chưa thiết kế. Hibernate `ddl-auto: validate` không đụng bảng không map nên không ảnh hưởng khởi động. Sẽ map lại khi viết consumer thật.
 ```
+
+- [ ] **Bước dọn: javalibs còn sót ngoài danh sách Files**
+
+Hai file nữa nhắc javalibs mà các step trên không đụng tới. Cả hai đều mô tả cơ chế nay không còn.
+
+**`services/notification-service/ERROR-CODES.md`** dòng 3 nói mã lỗi khai bằng `BusinessErrorCode.of(...)` và "javalibs tự đưa vào OpenAPI docs". `BusinessErrorCode` là kiểu của javalibs, và class `io.bankplatform.notification.web.NotificationErrors` **chưa từng được viết** (đã kiểm: không file nào trong repo dùng `BusinessErrorCode`). Thay dòng 3 bằng:
+
+```markdown
+Prefix: `ERR-NOTI-xxx`. **Chưa có cơ chế mã lỗi nào trong code**: `BusinessErrorCode` là kiểu của javalibs (đã gỡ cùng platform-libs) và class `io.bankplatform.notification.web.NotificationErrors` chưa từng được viết. Bảng dưới là hợp đồng đặt trước — sẽ nối vào code khi dựng `@RestControllerAdvice` đầu tiên, xem docs/KNOWN-LIMITATIONS.md.
+```
+
+**Quét lần cuối** — mọi dòng còn lại phải là câu cố ý nói về quá khứ, hoặc phải sửa:
+
+```bash
+cd /Users/tanvx/Dev/bank-platform && grep -rn "javalibs" services/notification-service/
+```
+
+Chú ý riêng `src/main/java/**/*Application.java` và các comment trong entity: một số nói "không cần `@Import`/`@ComponentScan` cho javalibs" hoặc "javalibs-security lấy role từ JWT" — đều mô tả cơ chế đã biến mất, phải viết lại theo hiện trạng.
 
 - [ ] **Step 7: Chạy test — phải XANH**
 
