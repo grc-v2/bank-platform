@@ -45,7 +45,7 @@ chỗ `V1` là làm hỏng consumer đang chạy.
 ## Lịch sử
 
 Trước 2026-09-01, ba lớp `ddd/Entity`, `ddd/AggregateRoot`, `web/ApiResponse`
-nằm ở thư viện ngoài `platform-libs` (javalibs). Thư viện đó đang được gỡ khỏi
-repo (hoàn tất ở task cuối của đợt refactor này) để chủ dự án tự viết lại phần
-hạ tầng. Xem bản cũ:
+nằm ở thư viện ngoài `platform-libs` (javalibs). Thư viện đó đã bị gỡ khỏi repo
+(task cuối của đợt refactor này) để chủ dự án tự viết lại phần hạ tầng. Xem bản
+cũ:
 `git show b095cd5:platform-libs/javalibs-ddd/...`

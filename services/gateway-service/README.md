@@ -1,13 +1,15 @@
 # gateway-service
 
-Cổng vào duy nhất cho frontend. **Chỉ định tuyến** — không nghiệp vụ, không chạm DB, không dùng javalibs.
+Cổng vào duy nhất cho frontend. **Chỉ định tuyến** — không nghiệp vụ, không chạm DB.
 
 - **Cổng:** 8080
 - **Không có schema DB.**
 
 ## Xác thực nằm ở đâu
 
-Gateway **không** kiểm JWT. Mỗi service phía sau tự kiểm qua `javalibs-security` — nếu gateway kiểm hộ thì bất kỳ ai gọi thẳng vào service (trong cùng cluster) đều bỏ qua được xác thực. Gateway chỉ là tiện ích định tuyến, không phải ranh giới tin cậy.
+Gateway **không** kiểm JWT, và từ 2026-09-01 **cũng không service nào phía sau kiểm** — Spring Security đã gỡ cùng platform-libs (xem docs/KNOWN-LIMITATIONS.md). Hiện toàn hệ thống không có xác thực.
+
+Khi dựng lại: đặt việc kiểm token ở **từng service**, không phải ở gateway. Gateway kiểm hộ thì bất kỳ ai gọi thẳng vào service (trong cùng cluster) đều bỏ qua được xác thực. Gateway chỉ là tiện ích định tuyến, không phải ranh giới tin cậy.
 
 ## Tình trạng tương thích Spring Cloud
 

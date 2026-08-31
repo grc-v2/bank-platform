@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * springdoc, data-redis, data-jpa, flyway) và bank-common, mỗi starter tự
  * đăng ký auto-configuration qua file
  * {@code META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports}.
- * Không còn thư viện ngoài (javalibs) nào cần khai báo riêng.
+ * Không còn thư viện ngoài (platform-libs) nào cần khai báo riêng.
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan

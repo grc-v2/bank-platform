@@ -17,7 +17,7 @@
   <packaging>pom</packaging>
 
   <name>bank-platform</name>
-  <description>Monorepo core banking: platform-libs (javalibs), bank-common, 5 service nghiệp vụ + gateway.</description>
+  <description>Monorepo core banking: bank-common, 5 service nghiệp vụ + gateway.</description>
 
   <properties>
     <java.version>21</java.version>
@@ -30,16 +30,14 @@
       trong ~/.m2. Nâng version thì kiểm lại Swagger UI mở được.
     -->
     <springdoc.version>3.1.0</springdoc.version>
-    <javalibs.version>2.0.0-SNAPSHOT</javalibs.version>
   </properties>
 
   <!--
-    platform-libs SẼ bị gỡ khỏi repo ở task cuối của đợt refactor này — chủ dự
-    án tự viết lại phần hạ tầng để hiểu bản chất. Hiện nó vẫn còn và vẫn build
-    qua profile with-libs bên dưới; năm service vẫn phụ thuộc BOM
-    javalibs-dependencies nên BOM đó chưa được xoá.
+    platform-libs đã bị gỡ khỏi repo ở task cuối của đợt refactor này (2026-09-01)
+    — chủ dự án tự viết lại phần hạ tầng để hiểu bản chất. Không còn module nào
+    build từ platform-libs, và không service nào còn phụ thuộc BOM của nó.
 
-    Muốn tham khảo bản javalibs cũ:
+    Muốn tham khảo bản platform-libs cũ:
       git show b095cd5:platform-libs/<đường-dẫn>
   -->
   <modules>
@@ -58,13 +56,6 @@
         <groupId>org.springdoc</groupId>
         <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
         <version>${springdoc.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.javalibs</groupId>
-        <artifactId>javalibs-dependencies</artifactId>
-        <version>${javalibs.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
       </dependency>
       <dependency>
         <groupId>io.bankplatform</groupId>
@@ -97,26 +88,4 @@
       </plugins>
     </pluginManagement>
   </build>
-
-  <profiles>
-    <!--
-      platform-libs là javalibs nguyên vẹn: nó KHÔNG khai POM này làm <parent>
-      (javalibs-root tự là root và quyết định D2 cấm sửa nó). Maven cho phép
-      điều đó: <modules> quyết định thứ tự build, <parent> quyết định kế thừa —
-      hai chuyện độc lập.
-
-      Vì sao là profile "thêm vào" chứ không phải profile "bỏ ra": Maven chỉ
-      cho profile THÊM module, không cho BỚT. Muốn build nhanh sau khi javalibs
-      đã nằm trong local repo:  mvn -P'!with-libs' clean install
-    -->
-    <profile>
-      <id>with-libs</id>
-      <activation>
-        <activeByDefault>true</activeByDefault>
-      </activation>
-      <modules>
-        <module>platform-libs</module>
-      </modules>
-    </profile>
-  </profiles>
 </project>

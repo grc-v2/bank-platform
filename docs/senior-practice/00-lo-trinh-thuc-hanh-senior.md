@@ -312,8 +312,8 @@ native, gRPC) được phép dời sang mục 7 mà không tính trượt.
 
 ## 10. Câu hỏi mở — chốt khi đến nơi
 
-1. Nâng JDK 21 → 25 cho toàn repo hay chỉ lab riêng? (ảnh hưởng javalibs — cần kiểm tra
-   tương thích trước; quyết ở đầu Phase C.)
+1. Nâng JDK 21 → 25 cho toàn repo hay chỉ lab riêng? (platform-libs đã gỡ khỏi repo
+   2026-09-01 nên không còn ràng buộc tương thích đó; quyết ở đầu Phase C.)
 2. Chứng chỉ CKA hay SAA hay không thi? (quyết cuối Phase B, theo hướng nghiệp muốn rẽ.)
 3. Design doc #1 lấy đề công ty hay đề bank-platform? (quyết khi vào C7, ưu tiên công ty.)
 4. Custom starter outbox/idempotency tách ở cuối Phase C hay để Phase D? (khi cả customer

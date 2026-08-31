@@ -23,7 +23,7 @@ import java.util.List;
 public class GatewayInfoController {
 
     private static final String DESCRIPTION =
-            "Cổng vào duy nhất cho frontend. Chỉ định tuyến — không nghiệp vụ, không DB, không javalibs.";
+            "Cổng vào duy nhất cho frontend. Chỉ định tuyến — không nghiệp vụ, không DB.";
 
     private final GatewayMvcProperties gatewayProperties;
     private final String serviceName;

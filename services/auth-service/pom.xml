@@ -105,7 +105,7 @@
       (đã kiểm bằng javap + unzip trên cả hai jar 4.1.0). Thiếu nó thì Spring
       ném NoClassDefFoundError lúc soi @ConditionalOnMissingBean — mọi test
       full-context chết khi dựng context, KHÔNG phải lỗi assertion nên thông
-      báo rất khó lần. javalibs-test cũ khai đủ cả hai jar.
+      báo rất khó lần. Thư viện test cũ của platform-libs khai đủ cả hai jar.
     -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

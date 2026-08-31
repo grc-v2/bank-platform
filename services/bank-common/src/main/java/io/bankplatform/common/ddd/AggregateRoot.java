@@ -6,7 +6,7 @@ package io.bankplatform.common.ddd;
  *
  * <p>Hiện lớp này KHÔNG thêm hành vi nào ngoài {@link Entity} — nó là một dấu
  * hiệu kiểu (type marker) để đọc code biết đâu là gốc aggregate, đâu là entity
- * con. Bản javalibs cũ có sẵn cơ chế domain event ({@code registerEvent},
+ * con. Bản platform-libs cũ có sẵn cơ chế domain event ({@code registerEvent},
  * {@code pullDomainEvents}) nhưng chưa dòng code nghiệp vụ nào trong repo dùng
  * tới, nên cố ý không chép sang. Thêm khi thật sự publish event đầu tiên —
  * xem docs/KNOWN-LIMITATIONS.md.

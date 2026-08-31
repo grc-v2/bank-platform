@@ -63,19 +63,18 @@ Hợp đồng thứ tự này áp cho mọi code ghi vào bốn bảng đó.
 
 Cả sáu `application.yml` đều khai `include: health,info,metrics,prometheus`, nhưng
 endpoint `prometheus` **không tồn tại**: không service nào có Prometheus registry trên
-classpath. `javalibs-observability-spring-boot-starter` chỉ kéo
-`spring-boot-starter-actuator` và `micrometer-tracing-bridge-otel`;
-`PrometheusMetricsExportAutoConfiguration` bị gate bởi
-`@ConditionalOnClass(PrometheusMeterRegistry)`, lớp chỉ có trong
+classpath. Mỗi service tự khai `spring-boot-starter-actuator` (trước đây đến qua
+`javalibs-observability-spring-boot-starter`, đã gỡ cùng platform-libs — xem mục
+"Hạ tầng gỡ cùng platform-libs" bên dưới); starter đó không kéo theo
+`micrometer-registry-prometheus`. `PrometheusMetricsExportAutoConfiguration` bị gate
+bởi `@ConditionalOnClass(PrometheusMeterRegistry)`, lớp chỉ có trong
 `micrometer-registry-prometheus`. `/actuator/metrics` thì hoạt động bình thường.
 
 Mục khai được giữ lại vì vô hại và giữ được đối xứng giữa sáu service.
 
-Xử bằng cách thêm `micrometer-registry-prometheus` vào
-`javalibs-observability-spring-boot-starter` — **một chỗ sửa cho cả sáu service**, vì
-`platform-libs/` nằm ngay trong repo này. Nhưng `platform-libs/` đang bị ràng buộc
-"không sửa một dòng nào", nên đây là quyết định của con người chứ không phải việc
-có thể tự làm.
+Xử bằng cách thêm dependency `micrometer-registry-prometheus` vào **từng** `pom.xml`
+của sáu service — không còn "một chỗ sửa cho cả sáu" như thời còn platform-libs, vì
+mỗi service giờ tự khai dependency riêng.
 
 ### Dockerfile
 
@@ -154,6 +153,103 @@ còn thêm jar native thì kéo classifier macOS sang cả image Linux chạy CI
 ## CI
 
 `.github/workflows/ci.yml` **chưa từng chạy thật** — repo chưa có remote. Workflow đã
-được đọc kỹ và nhất quán với cách repo build (profile `with-libs` mặc định bật, JDK 21,
-probe Postgres qua TCP), nhưng lần push đầu tiên vẫn là lần chạy đầu tiên.
+được đọc kỹ và nhất quán với cách repo build (JDK 21, probe Postgres qua TCP), nhưng
+lần push đầu tiên vẫn là lần chạy đầu tiên.
+
+## Hạ tầng gỡ cùng platform-libs (2026-09-01)
+
+`platform-libs` (javalibs) đã bị xoá khỏi repo để chủ dự án tự viết lại phần hạ
+tầng — mục tiêu là *học hiểu bản chất*, nên các khoản dưới đây là **nợ cố ý**,
+không phải bỏ sót. Tham khảo bản cũ: `git show b095cd5:platform-libs/...`
+
+### Security bằng 0
+
+Không xác thực, không phân quyền. Mọi endpoint của cả 5 service đều mở. Trước
+đây `javalibs-security` chặn tất cả trừ một danh sách permit-all, xác thực bằng
+JWT HS256. `JWT_SECRET` đã gỡ khỏi `.env.sample` và mọi `application*.yml`.
+
+Xử khi: viết luồng phát token ở auth-service. Lúc đó thêm lại
+`spring-boot-starter-oauth2-resource-server` và một `SecurityConfig` cho mỗi
+service.
+
+### Không có envelope lỗi thống nhất
+
+Exception ném ra trả về định dạng lỗi mặc định của Spring Boot, không phải
+`ApiResponse.error(...)`. `bank.info.error-code-prefix` trong `application.yml`
+hiện chỉ là metadata hiển thị trên dashboard — chưa cơ chế nào dùng nó để sinh
+mã lỗi.
+
+Xử khi: viết `@RestControllerAdvice` đầu tiên.
+
+### Không có correlation-id
+
+Trường `traceId` của `ApiResponse` luôn `null`; log không có MDC để nối các dòng
+của cùng một request. Trường vẫn giữ trong record để khi dựng filter không phải
+đổi hợp đồng JSON với frontend.
+
+### Không còn log request mặc định
+
+`RequestLoggingAutoConfiguration` của `javalibs-web` đăng ký filter log mọi
+request/response và **mặc định bật** — `@ConditionalOnProperty(prefix =
+"javalibs.web.logging", name = "enabled", havingValue = "true", matchIfMissing = true)`,
+đã kiểm trên source. Bộ starter thay thế không có gì tương đương, và không test
+nào assert nó, nên mất im lặng.
+
+Hệ quả: không còn access-log cho mỗi HTTP call. Cùng với mục correlation-id ở
+trên, khả năng quan sát của cả 5 service hiện bằng 0.
+
+Xử khi: viết filter log đầu tiên — nên làm cùng lúc với correlation-id, hai thứ
+này chỉ hữu ích khi đi cùng nhau.
+
+### CORS: KHÔNG mất gì
+
+Ghi lại để không ai đi tìm nhầm. `CorsAutoConfiguration` của `javalibs-web` là
+**opt-in**: `@ConditionalOnProperty(prefix = "javalibs.web.cors", name = "enabled",
+havingValue = "true")` — không có `matchIfMissing`. Chưa service nào từng đặt
+property đó (đã grep toàn bộ `application*.yml`). Nghĩa là **trước khi gỡ javalibs
+cũng đã không có cấu hình CORS nào hoạt động** — đây không phải hồi quy.
+
+Frontend hiện đi qua gateway nên chưa cần. Khi nào gọi thẳng service thì phải tự
+cấu hình CORS, nhưng đó là việc mới.
+
+### AggregateRoot không có cơ chế domain event
+
+Bản javalibs cũ có `registerEvent`/`pullDomainEvents`/`DomainEvent`.
+`io.bankplatform.common.ddd.AggregateRoot` hiện chỉ là dấu hiệu kiểu.
+
+Xử khi: publish domain event đầu tiên.
+
+### Cache của product-service đổi ngữ nghĩa, chưa lộ ra
+
+`javalibs-cache` tạo `RedisCacheManager` riêng, chạy TRƯỚC `CacheAutoConfiguration`
+của Boot (`@AutoConfiguration(before = ...)` + `@ConditionalOnMissingBean`), nên
+cấu hình gốc của Boot **chưa từng chạy** khi thư viện đó còn.
+
+Sau khi gỡ, `org.springframework.boot.cache.autoconfigure.RedisCacheConfiguration`
+của Boot thắng. Hai khác biệt đã kiểm trên source/bytecode:
+
+| | javalibs-cache | Boot mặc định |
+|---|---|---|
+| Serializer giá trị | JSON (không ràng buộc kiểu) | `JdkSerializationRedisSerializer` — **giá trị phải `implements Serializable`** |
+| TTL mặc định | `Duration.ofMinutes(10)` (`JavalibsCacheProperties:39`) | **không có** trừ khi đặt `spring.cache.redis.time-to-live` — chưa service nào đặt |
+
+Hiện **chưa lộ ra** vì `product-service` có `@EnableCaching` nhưng chưa `@Cacheable`
+nào. Người viết `@Cacheable` đầu tiên sẽ thừa hưởng một cache không bao giờ hết hạn,
+và nếu trả về `record`/DTO thường thì vỡ ngay lần ghi đầu bằng `SerializationException`.
+
+Xử khi: viết `@Cacheable` đầu tiên. Lúc đó đặt `spring.cache.redis.time-to-live` và
+cân nhắc `RedisCacheConfiguration` bean riêng dùng serializer JSON.
+
+### Mất lưới an toàn Flyway
+
+`clean-disabled` và phép kiểm quy ước đặt tên migration của
+`javalibs-persistence` không còn. `spring.flyway.clean-disabled: true` vẫn có
+trong cả 5 `application.yml`, nhưng phần kiểm tên migration thì không.
+
+Xử khi: cắt migration đầu tiên từ `schema.sql`.
+
+### Mất tiện ích test JWT
+
+`JwtTestFactory` và `TestUserContexts` của `javalibs-security-test` không còn.
+Test nào cần token phải tự dựng.
 

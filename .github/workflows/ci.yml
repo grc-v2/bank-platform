@@ -17,9 +17,8 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # Build CẢ platform-libs (profile with-libs bật mặc định): đảm bảo bản
-      # javalibs nằm trong repo thực sự compile được, không chỉ tin vào artifact
-      # đã publish ở đâu đó.
+      # platform-libs đã gỡ khỏi repo (2026-09-01); reactor giờ chỉ còn
+      # bank-common + 6 service.
       - name: Build toàn reactor
         run: mvn -B clean install -DskipTests
 

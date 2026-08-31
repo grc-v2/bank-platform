@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Ghim hợp đồng định danh của {@link Entity} — thứ 22 entity JPA của customer-service
- * và core-banking-service SẼ dựa vào sau khi chúng chuyển khỏi javalibs (Task 4 và 5).
+ * và core-banking-service đã dựa vào sau khi chúng chuyển khỏi platform-libs (Task 4 và 5).
  * Ba tính chất dưới đây là lý do lớp này tồn tại; mất một cái là entity vào Set/Map
  * sai lặng lẽ.
  */

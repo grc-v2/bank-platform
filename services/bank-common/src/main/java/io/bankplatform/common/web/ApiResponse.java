@@ -11,7 +11,7 @@ import java.time.Instant;
  * năm {@code ServiceInfoApiTest}. Đổi tên hay thứ tự là phá cả hai.
  *
  * <p>{@code traceId} hiện luôn {@code null}: chưa có correlation-id filter nào
- * sau khi gỡ javalibs-observability. Trường vẫn giữ để khi dựng filter không
+ * sau khi gỡ module observability của platform-libs. Trường vẫn giữ để khi dựng filter không
  * phải đổi hợp đồng JSON.
  *
  * @param <T>       kiểu payload
