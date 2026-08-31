@@ -21,6 +21,12 @@ spring:
     default-schema: customer
     clean-disabled: true
 
+  # Property CHẾT: Kafka client (spring-kafka) không còn trên classpath sau
+  # khi gỡ platform-libs — không có KafkaAutoConfiguration nào để bind khối
+  # này. compose.yaml vẫn dựng broker nhưng không service nào kết nối. Giữ
+  # lại vì đã ghi tài liệu (xem docs/KNOWN-LIMITATIONS.md, mục "Kafka client
+  # không còn trên classpath"). Xử khi: thêm lại spring-boot-kafka +
+  # spring-kafka vào pom.xml.
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
 

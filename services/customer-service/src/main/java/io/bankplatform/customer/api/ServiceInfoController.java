@@ -33,10 +33,14 @@ public class ServiceInfoController {
     /**
      * Chỉ ba hạ tầng này đáng hiển thị — các component còn lại của actuator
      * (diskSpace, ping, ssl) là nhiễu với dashboard. "kafka" nằm sẵn trong
-     * danh sách dù Boot 4.1 KHÔNG có health indicator nào cho Kafka — đã soát
-     * cả actuator, spring-boot-kafka lẫn spring-kafka 4.1.0, không jar nào
-     * chứa lớp health Kafka. Khi nào có indicator (tự viết hay Boot thêm),
-     * dòng kafka tự xuất hiện mà không phải sửa code.
+     * danh sách theo dõi dù Boot 4.1 KHÔNG có health indicator nào cho Kafka
+     * — đã soát cả actuator, spring-boot-kafka lẫn spring-kafka 4.1.0, không
+     * jar nào chứa lớp health Kafka — VÀ Kafka client hiện không còn trên
+     * classpath của service này (gỡ cùng platform-libs, xem
+     * docs/KNOWN-LIMITATIONS.md mục "Kafka client không còn trên classpath").
+     * Muốn dòng kafka xuất hiện phải làm hai việc theo thứ tự: (1) thêm lại
+     * dependency Kafka vào pom.xml, (2) viết health indicator (tự viết bằng
+     * KafkaAdmin.describeCluster hoặc chờ Boot bổ sung).
      */
     private static final Set<String> WATCHED_DEPENDENCIES = Set.of("db", "redis", "kafka");
 

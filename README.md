@@ -53,8 +53,10 @@ cd frontend && npm install && npm run dev
 ```
 
 Mở http://localhost:5173. Mỗi service có API `GET .../info` công khai
-(permit-all — chưa có luồng phát JWT) trả metadata dev: version, cổng, schema,
-uptime, trạng thái hạ tầng. Route qua gateway: xem thẻ gateway trên dashboard.
+(không còn xác thực nào trên toàn hệ thống — xem docs/KNOWN-LIMITATIONS.md,
+mục "Security bằng 0" — nên `/info` gọi được như mọi endpoint khác) trả
+metadata dev: version, cổng, schema, uptime, trạng thái hạ tầng. Route qua
+gateway: xem thẻ gateway trên dashboard.
 Lưu ý: bảng dependencies chưa có dòng `kafka` — Boot 4.1 không có health
 indicator cho Kafka (xem docs/KNOWN-LIMITATIONS.md).
 
