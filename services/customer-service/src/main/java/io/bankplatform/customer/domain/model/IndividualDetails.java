@@ -20,7 +20,7 @@ import java.time.LocalDate;
  */
 @Entity
 @Table(name = "individual_details")
-public class IndividualDetails extends io.javalibs.ddd.Entity<Long> {
+public class IndividualDetails extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @Column(name = "customer_id")

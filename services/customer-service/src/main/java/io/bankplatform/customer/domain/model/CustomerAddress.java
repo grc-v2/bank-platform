@@ -21,7 +21,7 @@ import java.time.LocalDate;
  */
 @Entity
 @Table(name = "customer_addresses")
-public class CustomerAddress extends io.javalibs.ddd.Entity<Long> {
+public class CustomerAddress extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

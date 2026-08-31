@@ -8,7 +8,7 @@ CIF (Customer Information File): hồ sơ khách hàng cá nhân và tổ chức
 
 ## Vì sao Mức A nhưng phẳng
 
-Service này có **hai** aggregate: `Customer` (kèm chi tiết, giấy tờ, địa chỉ, liên hệ) và `KycVerification` (kèm tài liệu). Dưới ngưỡng 3 aggregate nên giữ bố cục phẳng `domain/{model,rule,event,port}` đúng như tài liệu javalibs — chia theo aggregate lúc này chỉ tạo thêm thư mục mà không làm rõ thêm điều gì.
+Service này có **hai** aggregate: `Customer` (kèm chi tiết, giấy tờ, địa chỉ, liên hệ) và `KycVerification` (kèm tài liệu). Dưới ngưỡng 3 aggregate nên giữ bố cục phẳng `domain/{model,rule,event,port}` — chia theo aggregate lúc này chỉ tạo thêm thư mục mà không làm rõ thêm điều gì.
 
 So sánh với `core-banking-service` (4 aggregate, chia theo aggregate) để thấy quy tắc: **từ 3 aggregate trở lên mới chia.**
 
@@ -50,6 +50,6 @@ mvn -pl services/customer-service -am spring-boot:run -Dspring-boot.run.profiles
 
 - **Mapping Mức A thực dụng (L2)**: Entities đặt tại `io.bankplatform.customer.domain.model`, Repositories (Ports) tại `io.bankplatform.customer.domain.port`.
 - **Aggregate Root**: `Customer` (ôm `IndividualDetails`, `OrganizationDetails`, `CustomerIdentification`, `CustomerAddress`, `CustomerContact`) và `KycVerification` (ôm `KycDocument`). `CustomerRiskAssessment` là entity append-only độc lập.
-- **Bỏ qua cột/bảng**: Cột `customer_type` ở `individual_details`/`organization_details` không map Java (L4 — DB tự ghim bằng DEFAULT + CHECK). Bảng `outbox` KHÔNG map Java (L1 — chờ phán quyết `javalibs-datahub`).
+- **Bỏ qua cột/bảng**: Cột `customer_type` ở `individual_details`/`organization_details` không map Java (L4 — DB tự ghim bằng DEFAULT + CHECK). Bảng `outbox` KHÔNG map Java (L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs).
 - **Validate schema**: Mọi entity/port được kiểm chứng qua `ddl-auto: validate` với schema PostgreSQL thật trong Testcontainers `CustomerPersistenceMappingTest`.
 
