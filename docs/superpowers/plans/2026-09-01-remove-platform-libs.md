@@ -665,6 +665,22 @@ Trong `services/auth-service/pom.xml`, thay **toàn bộ** khối `<dependencies
       <artifactId>spring-boot-resttestclient</artifactId>
       <scope>test</scope>
     </dependency>
+    <!--
+      BẮT BUỘC đi kèm spring-boot-resttestclient, dù không dòng test nào import
+      nó. Đây là họ lỗi Boot-4-split quen thuộc của repo này:
+      TestRestTemplateTestAutoConfiguration.testRestTemplate() nhận tham số
+      ObjectProvider<org.springframework.boot.restclient.RestTemplateBuilder>,
+      mà RestTemplateBuilder.class CHỈ nằm trong jar spring-boot-restclient
+      (đã kiểm bằng javap + unzip trên cả hai jar 4.1.0). Thiếu nó thì Spring
+      ném NoClassDefFoundError lúc soi @ConditionalOnMissingBean — mọi test
+      full-context chết khi dựng context, KHÔNG phải lỗi assertion nên thông
+      báo rất khó lần. javalibs-test cũ khai đủ cả hai jar.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-restclient</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-postgresql</artifactId>
