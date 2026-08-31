@@ -21,82 +21,51 @@
       <artifactId>bank-common</artifactId>
     </dependency>
 
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-web-spring-boot-starter</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-security-spring-boot-starter</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-openapi-spring-boot-starter</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-observability-spring-boot-starter</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-persistence-spring-boot-starter</artifactId>
-    </dependency>
-
-    <!-- Idempotent consumer + EventEnvelope. resilience để retry gửi webhook
-         và ngắt mạch khi endpoint của user chết. -->
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-datahub-spring-boot-starter</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-resilience-spring-boot-starter</artifactId>
-    </dependency>
-
-    <!--
-      BẮT BUỘC đi kèm javalibs-datahub-spring-boot-starter. Cùng một lớp lỗi với
-      spring-boot-flyway bên dưới, nhưng nguy hiểm hơn vì nó IM LẶNG.
-
-      Đừng chẩn đoán nhầm: starter kéo org.springframework.kafka:spring-kafka KHÔNG
-      optional, nên client Kafka luôn có mặt. Thứ thiếu là
-      org.springframework.boot:spring-boot-kafka — Boot 4.1 tách
-      KafkaAutoConfiguration sang jar riêng, javalibs-datahub-spring-boot-autoconfigure
-      để jar đó ở scope optional, mà DatahubKafkaAutoConfiguration lại tham chiếu
-      class ấy CỨNG trong annotation: @AutoConfiguration(after = KafkaAutoConfiguration.class).
-
-      Thiếu Flyway thì service chết ngay lúc khởi động nên không ai bỏ sót được.
-      Thiếu jar này thì service vẫn UP, /actuator/health vẫn xanh, chỉ có một dòng
-      WARN "Failed to introspect meta-annotation @AutoConfiguration ...
-      TypeNotPresentException" rồi Spring bỏ qua TOÀN BỘ DatahubKafkaAutoConfiguration.
-      EventPublisher qua Kafka không bao giờ được tạo, và event lặng lẽ không đi đâu.
-      Một event không phát mà không ai báo lỗi là kiểu hỏng tệ nhất trên nền tảng
-      ngân hàng — tiền đã ghi sổ nhưng phía nghe không bao giờ biết.
-    -->
+    <!-- Bộ nền: mọi service nghiệp vụ đều có đúng bốn starter này -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-kafka</artifactId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
     </dependency>
 
     <!--
-      BẮT BUỘC, kể cả khi spring.flyway.enabled=false.
-      javalibs-persistence-spring-boot-starter kéo flyway-core KHÔNG optional, nên
-      @ConditionalOnClass(Flyway.class) của JavalibsFlywayAutoConfiguration luôn thỏa.
-      Nhưng autoconfigure lại để spring-boot-flyway ở scope optional, mà Boot 4.1 đã
-      dời FlywayConfigurationCustomizer vào đúng jar đó -> NoClassDefFoundError lúc
-      Spring soi @Bean của lớp cấu hình.
+      CỐ Ý KHÔNG có spring-boot-starter-data-redis: ServiceInfoApiTest assert
+      dependencyNames(data).doesNotContain("redis"). Thêm starter này vào là
+      DataRedisHealthIndicator xuất hiện và test đỏ ngay.
+    -->
 
-      Lưu ý hai cờ KHÁC NHAU: spring.flyway.enabled gate FlywayAutoConfiguration của
-      Spring Boot; JavalibsFlywayAutoConfiguration bị gate bởi cờ riêng
-      javalibs.persistence.flyway.enabled (mặc định true). Tắt cờ thứ hai có thể cũng
-      né được lỗi — nhưng ta CỐ Ý không làm vậy: để nó bật thì lưới an toàn Flyway của
-      javalibs (clean-disabled, kiểm quy ước đặt tên migration) đã sẵn sàng, và tự động
-      có hiệu lực ngay khi bật spring.flyway.enabled ở task sau. Tắt đi thì phải nhớ
-      bật lại — thứ rất dễ quên trên một nền tảng ngân hàng.
+    <!--
+      Flyway giữ lại dù spring.flyway.enabled=false. Bỏ đi thì khối
+      spring.flyway.* trong application.yml (kèm lời giải thích vì sao tắt và
+      điều kiện bật lại) trở thành property không ai đọc — âm thầm xoá một
+      quyết định đã ghi tài liệu.
+      spring-boot-flyway là jar riêng của Boot 4.x chứa FlywayConfigurationCustomizer;
+      thiếu nó là NoClassDefFoundError lúc Spring soi @Bean.
     -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-flyway</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -108,13 +77,38 @@
     </dependency>
 
     <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-test</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Boot 4 tách TestRestTemplate và @AutoConfigureTestRestTemplate sang jar
+      riêng spring-boot-resttestclient — starter-test KHÔNG chứa chúng.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-resttestclient</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      BẮT BUỘC đi kèm spring-boot-resttestclient, dù không dòng test nào import
+      nó. Đây là họ lỗi Boot-4-split quen thuộc của repo này:
+      TestRestTemplateTestAutoConfiguration.testRestTemplate() nhận tham số
+      ObjectProvider<org.springframework.boot.restclient.RestTemplateBuilder>,
+      mà RestTemplateBuilder.class CHỈ nằm trong jar spring-boot-restclient
+      (đã kiểm bằng javap + unzip trên cả hai jar 4.1.0). Thiếu nó thì Spring
+      ném NoClassDefFoundError lúc soi @ConditionalOnMissingBean — mọi test
+      full-context chết khi dựng context, KHÔNG phải lỗi assertion nên thông
+      báo rất khó lần. javalibs-test cũ khai đủ cả hai jar.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-restclient</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.javalibs</groupId>
-      <artifactId>javalibs-security-test</artifactId>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
