@@ -51,7 +51,8 @@ public class User {
     private OffsetDateTime updatedAt;
 
     // L8: user_roles chỉ có (user_id, role) — không entity/repository riêng,
-    // vòng đời gắn chặt User, javalibs-security lấy role từ JWT chứ không từ bảng này.
+    // vòng đời gắn chặt User. Khi dựng lại xác thực, role dự kiến lấy từ JWT
+    // lúc runtime chứ không query lại bảng này.
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
     @Enumerated(EnumType.STRING)
