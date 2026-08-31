@@ -20,7 +20,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "account_holders")
-public class AccountHolder extends io.javalibs.ddd.Entity<AccountHolderId> {
+public class AccountHolder extends io.bankplatform.common.ddd.Entity<AccountHolderId> {
 
     @EmbeddedId
     private AccountHolderId id;

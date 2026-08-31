@@ -30,25 +30,6 @@ spring:
 server:
   port: 8084
 
-javalibs:
-  security:
-    jwt:
-      secret: ${JWT_SECRET}
-    # DANH SÁCH NÀY THAY THẾ danh sách mặc định của javalibs-security, không
-    # phải nối thêm — nên phải chép lại đủ 7 đường mặc định. Thiếu một dòng là
-    # khoá swagger/actuator trong im lặng.
-    permit-all:
-      - /actuator/health
-      - /actuator/health/**
-      - /actuator/info
-      - /error
-      - /v3/api-docs/**
-      - /swagger-ui/**
-      - /swagger-ui.html
-      # info công khai có chủ đích: chưa có luồng phát JWT, và payload chỉ là
-      # metadata dev (không secret, không connection string).
-      - /api/accounts/info
-
 management:
   endpoints:
     web:

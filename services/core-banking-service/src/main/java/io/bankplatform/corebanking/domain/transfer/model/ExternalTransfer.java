@@ -18,7 +18,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "external_transfers")
-public class ExternalTransfer extends io.javalibs.ddd.Entity<Long> {
+public class ExternalTransfer extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

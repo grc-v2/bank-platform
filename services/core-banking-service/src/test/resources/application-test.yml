@@ -1,8 +1,4 @@
-javalibs:
-  security:
-    jwt:
-      secret: test-only-secret-please-change-me-at-least-32-bytes
-
+# Profile test do @ActiveProfiles("test") trên AbstractIntegrationTest kích hoạt.
 spring:
   flyway:
     enabled: false

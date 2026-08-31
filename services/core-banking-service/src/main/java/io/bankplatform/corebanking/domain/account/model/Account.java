@@ -1,6 +1,6 @@
 package io.bankplatform.corebanking.domain.account.model;
 
-import io.javalibs.ddd.AggregateRoot;
+import io.bankplatform.common.ddd.AggregateRoot;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -26,7 +26,7 @@ import java.time.OffsetDateTime;
  */
 @Entity
 @Table(name = "journal_lines")
-public class JournalLine extends io.javalibs.ddd.Entity<Long> {
+public class JournalLine extends io.bankplatform.common.ddd.Entity<Long> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

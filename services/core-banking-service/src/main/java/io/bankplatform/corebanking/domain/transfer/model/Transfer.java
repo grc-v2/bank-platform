@@ -1,6 +1,6 @@
 package io.bankplatform.corebanking.domain.transfer.model;
 
-import io.javalibs.ddd.AggregateRoot;
+import io.bankplatform.common.ddd.AggregateRoot;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

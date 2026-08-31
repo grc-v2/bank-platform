@@ -3,7 +3,7 @@ package io.bankplatform.corebanking.api;
 import io.bankplatform.corebanking.api.dto.DependencyStatus;
 import io.bankplatform.corebanking.api.dto.ServiceInfoResponse;
 import io.bankplatform.corebanking.config.ServiceInfoProperties;
-import io.javalibs.web.ApiResponse;
+import io.bankplatform.common.web.ApiResponse;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringBootVersion;
@@ -22,9 +22,10 @@ import java.util.Set;
 /**
  * Thông tin chi tiết của service cho dashboard dev.
  *
- * <p>Nằm trong permit-all có chủ đích: hệ chưa có luồng phát JWT nào,
- * nên bắt xác thực ở đây là khoá luôn dashboard. Chỉ trả metadata dev —
- * không secret, không connection string.</p>
+ * <p>Không có xác thực nào chặn endpoint này — từ 2026-09-01 service không còn
+ * Spring Security (xem docs/KNOWN-LIMITATIONS.md). Kể cả khi dựng lại
+ * security, endpoint này nên để mở: payload chỉ là metadata dev, không secret,
+ * không connection string.</p>
  */
 @RestController
 public class ServiceInfoController {

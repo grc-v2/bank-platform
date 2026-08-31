@@ -14,7 +14,7 @@ api ──────►  application  ──────►  domain
                   └── infrastructure ─┘   (implement port của domain)
 ```
 
-- `domain` **không import gì** ngoài JDK, `javalibs-ddd-core`, `javalibs-internal`, `bank-common`. Không Spring, không Kafka. Nhờ vậy unit test domain chạy bằng mili-giây.
+- `domain` **không import gì** ngoài JDK, `bank-common` (`io.bankplatform.common.ddd`), và JPA. Không Spring, không Kafka. Nhờ vậy unit test domain chạy bằng mili-giây.
 - `application` gọi domain + port, đánh dấu transaction, **không** biết HTTP.
 - `api` chỉ chuyển đổi HTTP ⇄ command/query, **không** chứa nghiệp vụ.
 - `infrastructure` là nơi duy nhất biết JPA/Kafka/RestClient.
@@ -22,13 +22,13 @@ api ──────►  application  ──────►  domain
 
 ## Vì sao chia theo aggregate
 
-Tài liệu javalibs minh họa `domain/{model,event,rule}` phẳng — đúng cho ví dụ chỉ có một aggregate. Service này có **bốn**: `Account` (kèm `Hold`), `JournalEntry` (kèm `GLAccount`), `Transfer` (kèm saga `ExternalTransfer`), và các value object dùng chung. Để phẳng thì `domain/model/` sẽ chứa khoảng 20 class trộn lẫn và ranh giới aggregate — thứ quan trọng nhất khi làm DDD — biến mất khỏi cấu trúc thư mục.
+Bố cục phẳng `domain/{model,event,rule}` đúng cho ví dụ chỉ có một aggregate. Service này có **bốn**: `Account` (kèm `Hold`), `JournalEntry` (kèm `GLAccount`), `Transfer` (kèm saga `ExternalTransfer`), và các value object dùng chung. Để phẳng thì `domain/model/` sẽ chứa khoảng 20 class trộn lẫn và ranh giới aggregate — thứ quan trọng nhất khi làm DDD — biến mất khỏi cấu trúc thư mục.
 
 **Quy tắc chung của repo: từ 3 aggregate trở lên thì chia `domain/` và `application/` theo aggregate trước, theo loại sau.** Dưới ngưỡng đó giữ bố cục phẳng (xem `customer-service`).
 
 ## JPA và domain model
 
-Chọn hướng **thực dụng**: gắn `@Entity`/`@Table` trực tiếp lên aggregate trong `domain/<aggregate>/model`, repository port `extends JpaRepository`. Đổi lại `domain` có dependency JPA — chấp nhận được, và dùng được ngay `javalibs-search`.
+Chọn hướng **thực dụng**: gắn `@Entity`/`@Table` trực tiếp lên aggregate trong `domain/<aggregate>/model`, repository port `extends JpaRepository`. Đổi lại `domain` có dependency JPA — chấp nhận được, và dùng được ngay `JpaSpecificationExecutor` của Spring Data JPA.
 
 Hướng này áp dụng cho **toàn bộ** service. Đừng trộn với hướng thuần khiết (entity riêng + mapper hai chiều) trong cùng một codebase.
 
@@ -64,6 +64,6 @@ mvn -pl services/core-banking-service -am spring-boot:run -Dspring-boot.run.prof
   - `account_holders` dùng `@EmbeddedId AccountHolderId`, `account_balance_snapshots` dùng `@EmbeddedId AccountBalanceSnapshotId`.
 - **Cột DB sinh**: `accounts.available_balance` (generated stored), `created_at`/`updated_at`/`posted_at`/`placed_at`/`charged_at`/`occurredAt` dùng `@Generated` + `insertable=false, updatable=false` (L5).
 - **Append-only**: `JournalEntry`, `JournalLine`, `AccountBalanceSnapshot`, `AuditLog` không có setter. `InterestAccrual`, `FeeCharge` chỉ có setter cập nhật trạng thái hạch toán.
-- **Bỏ qua bảng**: `outbox` và `processed_events` KHÔNG map Java (L1 — chờ phán quyết `javalibs-datahub`).
+- **Bỏ qua bảng**: `outbox` và `processed_events` KHÔNG map Java (L1 — chưa có hạ tầng eventing nào; `javalibs-datahub` đã gỡ cùng platform-libs).
 - **Validate schema**: Mọi entity/port được kiểm chứng qua `ddl-auto: validate` với schema PostgreSQL thật trong Testcontainers `CoreBankingPersistenceMappingTest`.
 
