@@ -34,8 +34,12 @@
   </properties>
 
   <!--
-    platform-libs đã bị gỡ khỏi repo (2026-09-01) — chủ dự án tự viết lại phần
-    hạ tầng để hiểu bản chất. Muốn tham khảo bản javalibs cũ:
+    platform-libs SẼ bị gỡ khỏi repo ở task cuối của đợt refactor này — chủ dự
+    án tự viết lại phần hạ tầng để hiểu bản chất. Hiện nó vẫn còn và vẫn build
+    qua profile with-libs bên dưới; năm service vẫn phụ thuộc BOM
+    javalibs-dependencies nên BOM đó chưa được xoá.
+
+    Muốn tham khảo bản javalibs cũ:
       git show b095cd5:platform-libs/<đường-dẫn>
   -->
   <modules>
