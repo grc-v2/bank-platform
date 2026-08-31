@@ -1834,6 +1834,27 @@ Bản javalibs cũ có `registerEvent`/`pullDomainEvents`/`DomainEvent`.
 
 Xử khi: publish domain event đầu tiên.
 
+### Cache của product-service đổi ngữ nghĩa, chưa lộ ra
+
+`javalibs-cache` tạo `RedisCacheManager` riêng, chạy TRƯỚC `CacheAutoConfiguration`
+của Boot (`@AutoConfiguration(before = ...)` + `@ConditionalOnMissingBean`), nên
+cấu hình gốc của Boot **chưa từng chạy** khi thư viện đó còn.
+
+Sau khi gỡ, `org.springframework.boot.cache.autoconfigure.RedisCacheConfiguration`
+của Boot thắng. Hai khác biệt đã kiểm trên source/bytecode:
+
+| | javalibs-cache | Boot mặc định |
+|---|---|---|
+| Serializer giá trị | JSON (không ràng buộc kiểu) | `JdkSerializationRedisSerializer` — **giá trị phải `implements Serializable`** |
+| TTL mặc định | `Duration.ofMinutes(10)` (`JavalibsCacheProperties:39`) | **không có** trừ khi đặt `spring.cache.redis.time-to-live` — chưa service nào đặt |
+
+Hiện **chưa lộ ra** vì `product-service` có `@EnableCaching` nhưng chưa `@Cacheable`
+nào. Người viết `@Cacheable` đầu tiên sẽ thừa hưởng một cache không bao giờ hết hạn,
+và nếu trả về `record`/DTO thường thì vỡ ngay lần ghi đầu bằng `SerializationException`.
+
+Xử khi: viết `@Cacheable` đầu tiên. Lúc đó đặt `spring.cache.redis.time-to-live` và
+cân nhắc `RedisCacheConfiguration` bean riêng dùng serializer JSON.
+
 ### Mất lưới an toàn Flyway
 
 `clean-disabled` và phép kiểm quy ước đặt tên migration của
